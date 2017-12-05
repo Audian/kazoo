@@ -635,6 +635,7 @@ maybe_connect_to_node(#node{node=NodeName}=Node) ->
         {'error', _R}=E -> E;
         'ok' ->
             lager:notice("successfully connected to freeswitch node ~s", [NodeName]),
+             _ = freeswitch:no_legacy(Node),
             call_control_fs_nodeup(NodeName),
             'ok'
     end.
@@ -665,6 +666,7 @@ maybe_start_node_handlers(#node{node=NodeName
                                ,cookie=Cookie
                                ,options=Props
                                }=Node) ->
+    _ = freeswitch:no_legacy(NodeName),
     try ecallmgr_fs_sup:add_node(NodeName, lists:usort([{'cookie', Cookie}
                                                        ,{'client_version', Version}
                                                        ,{'connect_strategy', Strategy}
