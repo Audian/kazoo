@@ -26,7 +26,7 @@
         <<"xmpp."
           ,(kz_term:to_binary(Event))/binary
           ,"."
-          ,(amqp_util:encode(JID))/binary>>).
+          ,(kz_amqp_util:encode(JID))/binary>>).
 -define(XMPP_EVENT_HEADERS, [<<"JID">>]).
 -define(OPTIONAL_XMPP_EVENT_HEADERS, [<<"Application-Name">>
                                      ,<<"Application-Event">>
@@ -60,7 +60,7 @@ bind_q(Queue, Props) ->
     bind_q(Queue, Events, JID).
 
 bind_q(Q, [Event|T], JID) ->
-    _ = amqp_util:bind_q_to_exchange(Q, ?XMPP_EVENT_ROUTING_KEY(Event, JID), ?XMPP_EXCHANGE),
+    _ = kz_amqp_util:bind_q_to_exchange(Q, ?XMPP_EVENT_ROUTING_KEY(Event, JID), ?XMPP_EXCHANGE),
     bind_q(Q, T, JID);
 bind_q(_Q, [], _JID) -> 'ok'.
 
@@ -71,7 +71,7 @@ unbind_q(Queue, Props) ->
     unbind_q(Queue, Events, JID).
 
 unbind_q(Q, [Event|T], JID) ->
-    _ = amqp_util:unbind_q_from_exchange(Q, ?XMPP_EVENT_ROUTING_KEY(Event, JID), ?XMPP_EXCHANGE),
+    _ = kz_amqp_util:unbind_q_from_exchange(Q, ?XMPP_EVENT_ROUTING_KEY(Event, JID), ?XMPP_EXCHANGE),
     unbind_q(Q, T, JID);
 unbind_q(_Q, [], _JID) -> 'ok'.
 
@@ -81,7 +81,7 @@ unbind_q(_Q, [], _JID) -> 'ok'.
 %%------------------------------------------------------------------------------
 -spec declare_exchanges() -> 'ok'.
 declare_exchanges() ->
-    amqp_util:new_exchange(?XMPP_EXCHANGE, <<"fanout">>).
+    kz_amqp_util:new_exchange(?XMPP_EXCHANGE, <<"fanout">>).
 
 
 -spec publish_event(kz_term:api_terms()) -> 'ok'.
@@ -92,7 +92,7 @@ publish_event(Event, ContentType) when is_list(Event) ->
     JID = props:get_value(<<"JID">>, Event),
     EventName = props:get_value(<<"Event-Name">>, Event),
     {'ok', Payload} = kz_api:prepare_api_payload(Event, ?XMPP_EVENT_VALUES, fun event/1),
-    amqp_util:basic_publish(?XMPP_EXCHANGE, ?XMPP_EVENT_ROUTING_KEY(EventName, JID), Payload, ContentType);
+    kz_amqp_util:basic_publish(?XMPP_EXCHANGE, ?XMPP_EVENT_ROUTING_KEY(EventName, JID), Payload, ContentType);
 publish_event(Event, ContentType) ->
     publish_event(kz_json:to_proplist(Event), ContentType).
 
