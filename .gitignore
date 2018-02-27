@@ -22,8 +22,6 @@
 sup.bash
 
 _rel/
-rel/*.relx.config
-rel/relx.config
 rel/dev-vm.args
 rel/vm.args
 
@@ -83,3 +81,4 @@ compile_commands.json
 /doc/mkdocs/*.local
 
 .idea/
+/ebin/
