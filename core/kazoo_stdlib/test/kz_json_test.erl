@@ -833,3 +833,24 @@ horse_merge_recursive() ->
                 ).
 
 -endif.
+
+from_map_test_() ->
+    M1 = #{options => [{opt1,<<"my-opt1">>},{opt2,<<"my-opt2">>}]},
+    Expected1 = {[{options,{[{opt1,<<"my-opt1">>},{opt2,<<"my-opt2">>}]}}]},
+    M2 = #{outer_key => #{inner_key => <<"inner value">>}},
+    Expected2 = {[{outer_key,{[{inner_key,<<"inner value">>}]}}]},
+    M3 = #{outer_key => #{inner_key => <<"inner value">>,
+                          inner_options => [{opt1,<<"my-opt1">>},{opt2,<<"my-opt2">>}]}},
+    Expected3 = {[{outer_key,{[{inner_key,<<"inner value">>}
+                              ,{inner_options,{[{opt1,<<"my-opt1">>},
+                                                {opt2,<<"my-opt2">>}]}}
+                              ]}}]},
+
+    [{"Map with a proplist as a key's value"
+     ,?_assertEqual(Expected1, kz_json:from_map(M1))
+     }
+    ,{"Normal map", ?_assertEqual(Expected2, kz_json:from_map(M2))}
+    ,{"Submap with a proplist as a key's value"
+     ,?_assertEqual(Expected3, kz_json:from_map(M3))
+     }
+    ].
