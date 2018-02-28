@@ -556,7 +556,7 @@ from_map(Map) when is_map(Map) ->
 
 -spec recursive_from_map(map()) -> object().
 recursive_from_map(Map) when is_map(Map) ->
-    from_list([{K, recursive_from_map(V)} || {K, V} <- maps:to_list(Map)]);
+    from_list_recursive([{kz_term:to_binary(K), recursive_from_map(V)} || {K, V} <- maps:to_list(Map)]);
 recursive_from_map(List) when is_list(List) ->
     [recursive_from_map(Item) || Item <- List];
 recursive_from_map(Else) -> Else.
