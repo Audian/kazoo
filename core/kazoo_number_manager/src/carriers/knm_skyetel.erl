@@ -69,14 +69,7 @@ check_numbers(_Numbers) -> {error, not_implemented}.
 %%------------------------------------------------------------------------------
 -spec find_numbers(kz_term:ne_binary(), pos_integer(), knm_search:options()) ->
                           {'ok', knm_number:knm_numbers()} | {error, any()}.
-find_numbers(<<"+1", Prefix:3/binary, _/binary>>, _Quantity, _Options)
-  when ?IS_US_TOLLFREE(Prefix) -> {error, not_implemented};
-
-find_numbers(<<"+1", _NPA:3/binary, _/binary>>=_Num, _Quantity, _Options) ->
-  {error, not_implemented}.
-
-find_numbers(<<"+1",_/binary>>=_InternationalNum, _Quantity, _Options) ->
-  {error, not_implemented}.
+find_numbers(_Prefix, _Quantity, _Options) -> {error, not_implemented}.
 
 %%------------------------------------------------------------------------------
 %% @doc Acquire a given number from the carrier.
