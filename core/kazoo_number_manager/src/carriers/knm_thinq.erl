@@ -54,7 +54,7 @@ is_number_billable(_Number) -> 'true'.
 %% @end
 %%------------------------------------------------------------------------------
 -spec should_lookup_cnam() -> boolean().
-should_lookup_cnam() -> 'false'.
+should_lookup_cnam() -> 'true'.
 
 %%------------------------------------------------------------------------------
 %% @doc Check with carrier if these numbers are registered with it.
@@ -70,13 +70,13 @@ check_numbers(_Numbers) -> {error, not_implemented}.
 %%------------------------------------------------------------------------------
 -spec find_numbers(kz_term:ne_binary(), pos_integer(), knm_search:options()) ->
                           {'ok', knm_number:knm_numbers()} | {error, any()}.
-find_numbers(<<"+1", Prefix:3/binary, _/binary>>, Quantity, Options)
+find_numbers(<<"+1", Prefix:3/binary, _/binary>>, _Quantity, _Options)
   when ?IS_US_TOLLFREE(Prefix) -> {error, not_implemented};
 
-find_numbers(<<"+1", NPA:3/binary, _/binary>>=Num, Quantity, Options) ->
+find_numbers(<<"+1", _NPA:3/binary, _/binary>>=Num, _Quantity, _Options) ->
   {error, not_implemented}.
 
-find_numbers(<<"+1",_/binary>>=_InternationalNum, Quantity, Options) ->
+find_numbers(<<"+1",_/binary>>=_InternationalNum, _Quantity, _Options) ->
   {error, not_implemented}.
 
 %%------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ find_numbers(<<"+1",_/binary>>=_InternationalNum, Quantity, Options) ->
 %%------------------------------------------------------------------------------
 -spec acquire_number(knm_number:knm_number()) -> knm_number:knm_number() | 
                                                  {error, any()}.
-acquire_number(Number) -> {error, not_implemented}.
+acquire_number(_Number) -> {error, not_implemented}.
 
 %%------------------------------------------------------------------------------
 %% @doc Disconnect a given number from the carrier.
@@ -93,6 +93,6 @@ acquire_number(Number) -> {error, not_implemented}.
 %%------------------------------------------------------------------------------
 -spec disconnect_number(knm_number:knm_number()) -> knm_number:knm_number() | 
                                                  {error, any()}.
-disconnect_number(Number) -> {error, not_implemented}.
+disconnect_number(_Number) -> {error, not_implemented}.
 
 %%% End of Module
