@@ -49,6 +49,14 @@ info() ->
 is_number_billable(_Number) -> 'true'.
 
 %%------------------------------------------------------------------------------
+%% @doc Check to see if use_stepswitch_cnam is defined in the couchdoc. If it is
+%% set to true, then incoming calls will use stepswitch for cnam
+%% @end
+%%------------------------------------------------------------------------------
+-spec should_lookup_cnam() -> boolean().
+should_lookup_cnam() -> 'false'.
+
+%%------------------------------------------------------------------------------
 %% @doc Check with carrier if these numbers are registered with it.
 %% @end
 %%------------------------------------------------------------------------------

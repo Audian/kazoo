@@ -48,6 +48,14 @@ info() ->
 is_number_billable(_Number) -> 'true'.
 
 %%------------------------------------------------------------------------------
+%% @doc Check to see if use_stepswitch_cnam is defined in the couchdoc. If it is
+%% set to true, then incoming calls will use stepswitch for cnam
+%% @end
+%%------------------------------------------------------------------------------
+-spec should_lookup_cnam() -> boolean().
+should_lookup_cnam() -> 'false'.
+
+%%------------------------------------------------------------------------------
 %% @doc Check with carrier if these numbers are registered with it.
 %% @end
 %%------------------------------------------------------------------------------
@@ -64,7 +72,7 @@ check_numbers(_Numbers) -> {error, not_implemented}.
 find_numbers(<<"+1", Prefix:3/binary, _/binary>>, Quantity, Options)
   when ?IS_US_TOLLFREE(Prefix) -> {error, not_implemented};
 
-find_numbers(<<"+1", NPA:3/binary, _/binary>>=Num, Quantity, Options) ->
+find_numbers(<<"+1", NPA:3/binary, _/binary>>=_Num, Quantity, Options) ->
   {error, not_implemented}.
 
 find_numbers(<<"+1",_/binary>>=_InternationalNum, Quantity, Options) ->
@@ -76,7 +84,7 @@ find_numbers(<<"+1",_/binary>>=_InternationalNum, Quantity, Options) ->
 %%------------------------------------------------------------------------------
 -spec acquire_number(knm_number:knm_number()) -> knm_number:knm_number() | 
                                                  {error, any()}.
-acquire_number(Number) -> {error, not_implemented}.
+acquire_number(_Number) -> {error, not_implemented}.
 
 %%------------------------------------------------------------------------------
 %% @doc Disconnect a given number from the carrier.
