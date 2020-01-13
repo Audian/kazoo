@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2015-2019, 2600Hz
+%%% @copyright (C) 2015-2020, 2600Hz
 %%% @doc
 %%% @author Peter Defebvre
 %%% @author Pierre Fenoll
@@ -185,8 +185,8 @@ from_number_with_options(DID, Options) ->
 %%------------------------------------------------------------------------------
 
 -spec fetch(kz_term:ne_binary() | knm_numbers:collection()) ->
-                   knm_phone_number_return() |
-                   knm_numbers:collection().
+          knm_phone_number_return() |
+          knm_numbers:collection().
 fetch(?NE_BINARY=Num) ->
     fetch(Num, knm_number_options:default());
 fetch(T0=#{todo := Nums, options := Options}) ->
@@ -428,14 +428,12 @@ fetch(Num=?NE_BINARY, Options) ->
     NumberDb = knm_converters:to_db(NormalizedNum),
     case fetch(NumberDb, NormalizedNum, Options) of
         {'ok', JObj} -> handle_fetch(JObj, Options);
-        {'error', _R}=Error ->
-            lager:debug("failed to open ~s in ~s: ~p", [NormalizedNum, NumberDb, _R]),
-            Error
+        {'error', _R}=Error -> Error
     end.
 
 -spec fetch(kz_term:ne_binary(), kz_term:ne_binary(), knm_number_options:options()) ->
-                   {'ok', kz_json:object()} |
-                   {'error', any()}.
+          {'ok', kz_json:object()} |
+          {'error', any()}.
 fetch(NumberDb, NormalizedNum, Options) ->
     case knm_number_options:batch_run(Options) of
         'true' -> kz_datamgr:open_doc(NumberDb, NormalizedNum);
@@ -444,7 +442,7 @@ fetch(NumberDb, NormalizedNum, Options) ->
 -endif.
 
 -spec handle_fetch(kz_json:object(), knm_number_options:options()) ->
-                          {'ok', knm_phone_number()}.
+          {'ok', knm_phone_number()}.
 handle_fetch(JObj, Options) ->
     PN = from_json_with_options(JObj, Options),
     case state(PN) =:= ?NUMBER_STATE_AVAILABLE
@@ -760,7 +758,7 @@ features_fold(FeatureKey, Acc, JObj) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec from_json_with_options(kz_json:object(), knm_phone_number() | knm_number_options:options()) ->
-                                    knm_phone_number().
+          knm_phone_number().
 from_json_with_options(JObj, #knm_phone_number{}=PN) ->
     Options = [{'dry_run', dry_run(PN)}
               ,{'batch_run', batch_run(PN)}
@@ -797,8 +795,8 @@ is_phone_number(_) -> 'false'.
 %% @end
 %%------------------------------------------------------------------------------
 -spec setters(knm_phone_number() | knm_numbers:collection(), set_functions()) ->
-                     knm_phone_number_return() |
-                     knm_numbers:collection().
+          knm_phone_number_return() |
+          knm_numbers:collection().
 
 setters(#knm_phone_number{}=PN, Routines) ->
     setters_pn(PN, Routines);
@@ -1574,6 +1572,7 @@ private_to_public() ->
      ,?FEATURE_FAILOVER => FailoverPub
      ,?FEATURE_RINGBACK => RingbackPub
      ,?FEATURE_FORCE_OUTBOUND => [[?FEATURE_FORCE_OUTBOUND]]
+     ,?FEATURE_IM => [[?FEATURE_IM]]
      }.
 
 %%------------------------------------------------------------------------------
@@ -1610,9 +1609,7 @@ sanitize_public_fields(JObj) ->
                            knm_numbers:collection() |
                            boolean().
 is_authorized(T) when is_map(T) -> is_authorized_collection(T);
-is_authorized(#knm_phone_number{auth_by = ?KNM_DEFAULT_AUTH_BY}) ->
-    lager:info("bypassing auth"),
-    'true';
+is_authorized(#knm_phone_number{auth_by = ?KNM_DEFAULT_AUTH_BY}) -> 'true';
 is_authorized(#knm_phone_number{auth_by = 'undefined'}) -> 'false';
 is_authorized(#knm_phone_number{assigned_to = 'undefined'
                                ,assign_to = 'undefined'
@@ -1747,7 +1744,7 @@ try_delete_from(SplitBy, T0, IgnoreDbNotFound) ->
                 knm_numbers:add_oks(PNs, T);
             (Db, PNs, T) ->
                 ?LOG_DEBUG("deleting from ~s", [Db]),
-                Nums = [kz_doc:id(to_json(PN)) || PN <- PNs],
+                Nums = [to_json(PN) || PN <- PNs],
                 case delete_docs(Db, Nums) of
                     {'ok', JObjs} -> handle_bulk_change(Db, JObjs, PNs, T);
                     {'error', 'not_found'} when IgnoreDbNotFound ->

@@ -298,6 +298,10 @@
                         {
                             "friendly_name": "Support",
                             "name": "support"
+                        },
+                        {
+                            "friendly_name": "ASR Transcriptions",
+                            "name": "asr-transcriptions"
                         }
                     ],
                     "description": "ledgers registered_ledgers",
@@ -1812,6 +1816,19 @@
         "callflows.branch_bnumber": {
             "description": "Validator for the branch_bnumber callflow data object",
             "properties": {
+                "hunt": {
+                    "default": false,
+                    "description": "Should the capture group be used to hunt for a new callflow",
+                    "type": "boolean"
+                },
+                "hunt_allow": {
+                    "description": "A regexp used to match against the capture group to whitelist allowed numbers to hunt",
+                    "type": "string"
+                },
+                "hunt_deny": {
+                    "description": "A regexp used to match against the capture group to blacklist denied numbers to hunt",
+                    "type": "string"
+                },
                 "skip_module": {
                     "description": "When set to true this callflow action is skipped, advancing to the wildcard branch (if any)",
                     "type": "boolean"
@@ -2526,6 +2543,7 @@
                     "type": "boolean"
                 },
                 "type": {
+                    "default": "extension",
                     "description": "The type of collection to pickup",
                     "enum": [
                         "group",
@@ -2536,6 +2554,9 @@
                     "type": "string"
                 }
             },
+            "required": [
+                "type"
+            ],
             "type": "object"
         },
         "callflows.hangup": {
@@ -3076,7 +3097,7 @@
                 },
                 "req_body_format": {
                     "default": "form",
-                    "description": "What format should the request body have",
+                    "description": "What format should the request body have when using POST",
                     "enum": [
                         "form",
                         "json"
@@ -3091,6 +3112,11 @@
                         "twiml"
                     ],
                     "type": "string"
+                },
+                "req_timeout_ms": {
+                    "description": "How long, in milliseconds, to wait for a Pivot response from the HTTP server",
+                    "maximum": 5000,
+                    "type": "integer"
                 },
                 "skip_module": {
                     "description": "When set to true this callflow action is skipped, advancing to the wildcard branch (if any)",
@@ -20353,6 +20379,9 @@
                 "Request-Format": {
                     "type": "string"
                 },
+                "Request-Timeout": {
+                    "type": "integer"
+                },
                 "Voice-URI": {
                     "type": "string"
                 }
@@ -23345,8 +23374,9 @@
                 },
                 "Route-Type": {
                     "enum": [
-                        "on-net",
-                        "off-net"
+                        "onnet",
+                        "offnet",
+                        "api"
                     ],
                     "type": "string"
                 },
@@ -23371,10 +23401,9 @@
             },
             "required": [
                 "Body",
-                "Callee-ID-Number",
-                "Caller-ID-Number",
+                "From",
                 "Message-ID",
-                "Route-ID"
+                "To"
             ],
             "type": "object"
         },
@@ -23494,6 +23523,9 @@
                 "Force-Fax": {
                     "type": "string"
                 },
+                "From": {
+                    "type": "string"
+                },
                 "From-Realm": {
                     "type": "string"
                 },
@@ -23556,8 +23588,8 @@
                 },
                 "Route-Type": {
                     "enum": [
-                        "on-net",
-                        "off-net"
+                        "onnet",
+                        "offnet"
                     ],
                     "type": "string"
                 },
@@ -23582,6 +23614,9 @@
                     "type": "string"
                 },
                 "Timeout": {
+                    "type": "string"
+                },
+                "To": {
                     "type": "string"
                 },
                 "To-Realm": {
@@ -23679,7 +23714,7 @@
                     "type": "string"
                 },
                 "Endpoint-Actions": {
-                    "type": "string"
+                    "type": "object"
                 },
                 "Endpoint-Delay": {
                     "type": "string"
@@ -23798,6 +23833,9 @@
                 "Account-ID": {
                     "type": "string"
                 },
+                "Application-ID": {
+                    "type": "string"
+                },
                 "Body": {
                     "type": "string"
                 },
@@ -23870,6 +23908,12 @@
                 "Orig-Port": {
                     "type": "string"
                 },
+                "Originator-Flags": {
+                    "type": "string"
+                },
+                "Originator-Properties": {
+                    "type": "string"
+                },
                 "Request": {
                     "type": "string"
                 },
@@ -23878,8 +23922,8 @@
                 },
                 "Route-Type": {
                     "enum": [
-                        "on-net",
-                        "off-net"
+                        "onnet",
+                        "offnet"
                     ],
                     "type": "string"
                 },
@@ -23895,6 +23939,12 @@
                 "System-ID": {
                     "type": "string"
                 },
+                "Target-Flags": {
+                    "type": "string"
+                },
+                "Target-Properties": {
+                    "type": "string"
+                },
                 "To": {
                     "type": "string"
                 },
@@ -23904,10 +23954,9 @@
             },
             "required": [
                 "Body",
-                "Callee-ID-Number",
-                "Caller-ID-Number",
+                "From",
                 "Message-ID",
-                "Route-ID"
+                "To"
             ],
             "type": "object"
         },
@@ -25508,6 +25557,10 @@
                         "stop",
                         "toggle"
                     ],
+                    "type": "string"
+                },
+                "dtmf_leg": {
+                    "description": "leg to listen for DTMF",
                     "type": "string"
                 },
                 "format": {
@@ -29707,6 +29760,10 @@
                     },
                     "type": "array"
                 },
+                "request_memory_limit": {
+                    "description": "Limit the amount of memory an API request can consume (in bytes)",
+                    "type": "integer"
+                },
                 "request_timeout_ms": {
                     "default": 10000,
                     "description": "crossbar request timeout in milliseconds",
@@ -29865,6 +29922,47 @@
                     "default": 2682000,
                     "description": "The maximum number of seconds between the start and end time of a call stats request",
                     "type": "integer"
+                }
+            },
+            "type": "object"
+        },
+        "system_config.crossbar.alerts": {
+            "description": "Schema for crossbar.alerts system_config",
+            "properties": {
+                "check_financials": {
+                    "default": true,
+                    "description": "crossbar alerts check_financials",
+                    "type": "boolean"
+                },
+                "check_low_balance": {
+                    "default": true,
+                    "description": "crossbar alerts check_low_balance",
+                    "type": "boolean"
+                },
+                "check_payment_token": {
+                    "default": true,
+                    "description": "crossbar alerts check_payment_token",
+                    "type": "boolean"
+                },
+                "check_port_action_required": {
+                    "default": true,
+                    "description": "crossbar alerts check_port_action_required",
+                    "type": "boolean"
+                },
+                "check_port_requests": {
+                    "default": true,
+                    "description": "crossbar alerts check_port_requests",
+                    "type": "boolean"
+                },
+                "check_port_suspended": {
+                    "default": true,
+                    "description": "crossbar alerts check_port_suspended",
+                    "type": "boolean"
+                },
+                "check_system_alerts": {
+                    "default": true,
+                    "description": "crossbar alerts check_system_alerts",
+                    "type": "boolean"
                 }
             },
             "type": "object"
@@ -30504,6 +30602,11 @@
                 "inbound_queue_name": {
                     "description": "doodle inbound queue name",
                     "type": "string"
+                },
+                "listeners": {
+                    "default": 1,
+                    "description": "doodle listeners",
+                    "type": "integer"
                 },
                 "min_bucket_cost": {
                     "default": 1,
@@ -32004,6 +32107,60 @@
             },
             "type": "object"
         },
+        "system_config.kazoo_im": {
+            "description": "Schema for kazoo_im system_config",
+            "properties": {
+                "connector": {
+                    "properties": {
+                        "connections": {
+                            "description": "kazoo_im connector connections",
+                            "type": "object"
+                        }
+                    }
+                },
+                "onnet_listeners": {
+                    "default": 1,
+                    "description": "kazoo_im onnet_listeners",
+                    "type": "integer"
+                }
+            },
+            "type": "object"
+        },
+        "system_config.kazoo_web": {
+            "description": "Schema for kazoo_web system_config",
+            "properties": {
+                "client": {
+                    "properties": {
+                        "blacklist": {
+                            "properties": {
+                                "cidrs": {
+                                    "default": [
+                                        "127.0.0.1/32",
+                                        "0.0.0.0/32"
+                                    ],
+                                    "description": "kazoo_web client blacklist cidrs",
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "type": "array"
+                                },
+                                "hosts": {
+                                    "default": [
+                                        "localhost"
+                                    ],
+                                    "description": "kazoo_web client blacklist hosts",
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "type": "object"
+        },
         "system_config.keys": {
             "description": "Schema for DTMF keys system_config",
             "properties": {
@@ -32087,6 +32244,10 @@
                         {
                             "friendly_name": "Support",
                             "name": "support"
+                        },
+                        {
+                            "friendly_name": "ASR Transcriptions",
+                            "name": "asr-transcriptions"
                         }
                     ],
                     "description": "ledgers registered_ledgers",
@@ -32225,7 +32386,7 @@
                     "type": "boolean"
                 },
                 "max_recording_time_limit": {
-                    "default": 3600,
+                    "default": 10800,
                     "description": "media maximum recording time limit",
                     "type": "integer"
                 },
@@ -33438,6 +33599,11 @@
         "system_config.pivot": {
             "description": "Schema for pivot system_config",
             "properties": {
+                "request_timeout_ms": {
+                    "default": 5000,
+                    "description": "pivot request_timeout_ms",
+                    "type": "integer"
+                },
                 "tts_texts_size": {
                     "default": 4000,
                     "description": "pivot tts texts size",
@@ -33719,45 +33885,6 @@
                         }
                     },
                     "type": "object"
-                },
-                "google": {
-                    "default": {},
-                    "description": "pusher google",
-                    "properties": {
-                        "api_key": {
-                            "description": "API Key for gcm",
-                            "type": "string"
-                        },
-                        "extra_headers": {
-                            "default": {},
-                            "description": "Additional headers for INVITEs sent to push devices in the UA",
-                            "properties": {
-                                "Invite-Format": {
-                                    "description": "When set to push_and_invite, sets the X-KAZOO-PUSHER-Invite-Format header to push_and_invite, resulting in both a push notification and a SIP INVITE being sent to the endpoint.",
-                                    "enum": [
-                                        "invite",
-                                        "push",
-                                        "push_and_invite"
-                                    ],
-                                    "type": "string"
-                                }
-                            }
-                        },
-                        "headers": {
-                            "default": {},
-                            "description": "pusher google headers",
-                            "type": "object"
-                        }
-                    },
-                    "type": "object"
-                },
-                "modules": {
-                    "default": [],
-                    "description": "pusher modules",
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
                 }
             },
             "type": "object"
@@ -34203,9 +34330,25 @@
                     "description": "API key for Google Cloud Speech",
                     "type": "string"
                 },
+                "asr_enable_automatic_punctuation": {
+                    "default": true,
+                    "description": "detect and insert punctuation in transcription results",
+                    "type": "boolean"
+                },
                 "asr_enable_word_time_offsets": {
                     "description": "top result includes a list of words and the start and end time offsets",
                     "type": "boolean"
+                },
+                "asr_model": {
+                    "default": "phone_call",
+                    "description": "model to select for the given request",
+                    "enum": [
+                        "command_and_search",
+                        "phone_call",
+                        "video",
+                        "default"
+                    ],
+                    "type": "string"
                 },
                 "asr_profanity_filter": {
                     "description": "server will attempt to filter out profanities, replacing all but the initial character in each filtered word with asterisk",
@@ -34215,6 +34358,11 @@
                     "default": "https://speech.googleapis.com/v1/speech:recognize",
                     "description": "Google Cloud Speech API url",
                     "type": "string"
+                },
+                "asr_use_enhanced": {
+                    "default": true,
+                    "description": "use an enhanced model for speech recognition",
+                    "type": "boolean"
                 },
                 "tts_api_key": {
                     "default": "",
@@ -35937,6 +36085,11 @@
                     "maxLength": 32,
                     "minLength": 5,
                     "type": "string"
+                },
+                "transcribe": {
+                    "default": false,
+                    "description": "Transcribe voicemail using ASR engine",
+                    "type": "boolean"
                 }
             },
             "required": [

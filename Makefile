@@ -40,6 +40,9 @@ changed_swagger:
 compile: ACTION = all
 compile: deps kazoo
 
+compile-lean: ACTION = compile-lean
+compile-lean: deps $(KAZOODIRS)
+
 $(KAZOODIRS):
 	@$(MAKE) -C $(@D) $(ACTION)
 
@@ -230,7 +233,7 @@ diff: dialyze-it
 bump-copyright:
 	@$(ROOT)/scripts/bump-copyright-year.sh $(shell find applications core -iname '*.erl' -or -iname '*.hrl')
 
-FMT_SHA = 237604a566879bda46d55d9e74e3e66daf1b557a
+FMT_SHA = 4e9b3379952e0cb3319308d7bdef832eb305f816
 $(FMT):
 	wget -qO - 'https://codeload.github.com/fenollp/erlang-formatter/tar.gz/$(FMT_SHA)' | tar -vxz -C $(ROOT)/make/
 	mv $(ROOT)/make/erlang-formatter-$(FMT_SHA) $(ROOT)/make/erlang-formatter
@@ -250,23 +253,23 @@ app_applications:
 
 code_checks:
 	@if [ -n "$(CHANGED)" ]; then $(ROOT)/scripts/code_checks.bash $(CHANGED) ; else echo "no code changes for code checking" ; fi
-	@ERL_LIBS=deps/:core/:applications/ $(ROOT)/scripts/no_raw_json.escript
+	@ERL_LIBS=deps:core:applications $(ROOT)/scripts/no_raw_json.escript $(CHANGED)
 	@$(ROOT)/scripts/check-spelling.bash
 	@$(ROOT)/scripts/kz_diaspora.bash
 	@$(ROOT)/scripts/edocify.escript
 
 apis:
-	@ERL_LIBS=deps/:core/:applications/ $(ROOT)/scripts/generate-schemas.escript
+	@ERL_LIBS=deps:core:applications $(ROOT)/scripts/generate-schemas.escript
 	@$(ROOT)/scripts/format-json.sh $(shell find applications core -wholename '*/schemas/*.json')
-	@ERL_LIBS=deps/:core/:applications/ $(ROOT)/scripts/generate-api-endpoints.escript
+	@ERL_LIBS=deps:core:applications $(ROOT)/scripts/generate-api-endpoints.escript
 	@$(ROOT)/scripts/generate-doc-schemas.sh `egrep -rl '(#+) Schema' core/ applications/ | grep -v '.[h|e]rl'`
 	@$(ROOT)/scripts/format-json.sh applications/crossbar/priv/api/swagger.json
 	@$(ROOT)/scripts/format-json.sh $(shell find applications core -wholename '*/api/*.json')
-	@ERL_LIBS=deps/:core/:applications/ $(ROOT)/scripts/generate-fs-headers-hrl.escript
-	@ERL_LIBS=deps/:core/:applications/ $(ROOT)/scripts/generate-kzd-builders.escript
+	@ERL_LIBS=deps:core:applications $(ROOT)/scripts/generate-fs-headers-hrl.escript
+	@ERL_LIBS=deps:core:applications $(ROOT)/scripts/generate-kzd-builders.escript
 
 schemas:
-	@ERL_LIBS=deps/:core/:applications/ $(ROOT)/scripts/generate-schemas.escript
+	@ERL_LIBS=deps:core:applications $(ROOT)/scripts/generate-schemas.escript
 
 DOCS_ROOT=$(ROOT)/doc/mkdocs
 docs: docs-validate docs-report docs-setup docs-build
@@ -293,7 +296,7 @@ docs-serve: docs-setup docs-build
 	@$(MAKE) -C $(DOCS_ROOT) DOCS_ROOT=$(DOCS_ROOT) docs-serve
 
 fs-headers:
-	@ERL_LIBS=deps/:core/:applications/ $(ROOT)/scripts/generate-fs-headers-hrl.escript
+	@ERL_LIBS=deps:core:applications $(ROOT)/scripts/generate-fs-headers-hrl.escript
 
 validate-swagger:
 	@$(ROOT)/scripts/validate-swagger.sh

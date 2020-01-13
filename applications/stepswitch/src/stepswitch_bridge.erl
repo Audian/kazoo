@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2013-2019, 2600Hz
+%%% @copyright (C) 2013-2020, 2600Hz
 %%% @doc
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -22,6 +22,12 @@
         ,terminate/2
         ,code_change/3
         ]).
+
+-ifdef(TEST).
+-export[avoid_privacy_if_emergency_call/2
+       ,contains_emergency_endpoints/1
+       ].
+-endif.
 
 -include("stepswitch.hrl").
 -include_lib("kazoo_amqp/include/kapi_offnet_resource.hrl").
@@ -73,7 +79,7 @@
 %% @end
 %%------------------------------------------------------------------------------
 -spec start_link(stepswitch_resources:endpoints(), kapi_offnet_resource:req()) ->
-                        kz_types:startlink_ret().
+          kz_types:startlink_ret().
 start_link(Endpoints, OffnetReq) ->
     CallId = kapi_offnet_resource:call_id(OffnetReq),
     Bindings = [?CALL_BINDING(CallId)
@@ -98,7 +104,7 @@ start_link(Endpoints, OffnetReq) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec init([stepswitch_resources:endpoints() | kapi_offnet_resource:req()]) ->
-                  {'ok', state()}.
+          {'ok', state()}.
 init([Endpoints, OffnetReq]) ->
     kapi_offnet_resource:put_callid(OffnetReq),
     case kapi_offnet_resource:control_queue(OffnetReq) of
@@ -347,7 +353,7 @@ maybe_deny_emergency_bridge(#state{control_queue=ControlQ
     lager:debug("sent bridge command to ~s", [ControlQ]).
 
 -spec update_endpoints_emergency_cid(stepswitch_resources:endpoints(), kz_term:ne_binary(), kz_term:api_ne_binary()) ->
-                                            stepswitch_resources:endpoints().
+          stepswitch_resources:endpoints().
 update_endpoints_emergency_cid(Endpoints, Number, Name) ->
     [update_endpoint_emergency_cid(Endpoint, Number, Name)
      || Endpoint <- Endpoints
@@ -377,7 +383,7 @@ outbound_flags(OffnetReq) ->
     end.
 
 -spec build_bridge(state(), kz_term:api_binary(), kz_term:api_binary(), boolean()) ->
-                          kz_term:proplist().
+          kz_term:proplist().
 build_bridge(#state{endpoints=Endpoints
                    ,resource_req=OffnetReq
                    ,queue=Q
@@ -407,8 +413,9 @@ build_bridge(#state{endpoints=Endpoints
                  ,{<<"Require-Fail-On-Single-Reject">>, null}
                  ],
 
+    NewEndpoints = avoid_privacy_if_emergency_call(IsEmergency, Endpoints),
     CCVs = kz_json:set_values(AddCCVs ++ RemoveCCVs, ReqCCVs),
-    FmtEndpoints = stepswitch_util:format_endpoints(Endpoints, Name, Number, OffnetReq),
+    FmtEndpoints = stepswitch_util:format_endpoints(NewEndpoints, Name, Number, OffnetReq),
 
     Realm = kzd_accounts:fetch_realm(AccountId),
 
@@ -463,7 +470,7 @@ maybe_override_asserted_identity(OffnetReq, {'true', Number, Name}) ->
     end.
 
 -spec bridge_from_uri(kz_term:api_binary(), kapi_offnet_resource:req()) ->
-                             kz_term:api_binary().
+          kz_term:api_binary().
 bridge_from_uri(Number, OffnetReq) ->
     Realm = stepswitch_util:default_realm(OffnetReq),
 
@@ -563,7 +570,7 @@ is_emergency_endpoint('true') ->
     'true';
 is_emergency_endpoint('false') -> 'false';
 is_emergency_endpoint(Endpoint) ->
-    is_emergency_endpoint(kz_json:is_true([<<"Custom-Channel-Vars">>, <<"Emergency-Resource">>], Endpoint)).
+    is_emergency_endpoint(kz_json:is_true([?KEY_CCVS, ?KEY_EMERGENCY_RESOURCE], Endpoint)).
 
 -spec bridge_timeout(kapi_offnet_resource:req()) -> kz_term:proplist().
 bridge_timeout(OffnetReq) ->
@@ -656,8 +663,8 @@ send_deny_emergency_notification(OffnetReq) ->
     kapps_notify_publisher:cast(Props, fun kapi_notifications:publish_denied_emergency_bridge/1).
 
 -spec send_deny_emergency_response(kapi_offnet_resource:req(), kz_term:ne_binary()) ->
-                                          {'ok', kz_term:ne_binary()} |
-                                          {'error', 'no_response'}.
+          {'ok', kz_term:ne_binary()} |
+          {'error', 'no_response'}.
 send_deny_emergency_response(OffnetReq, ControlQ) ->
     CallId = kapi_offnet_resource:call_id(OffnetReq),
     Code = kapps_config:get_integer(?SS_CONFIG_CAT, <<"deny_emergency_bridge_code">>, 486),
@@ -672,7 +679,24 @@ send_deny_emergency_response(OffnetReq, ControlQ) ->
     kz_call_response:send(CallId, ControlQ, Code, Cause, Media).
 
 -spec get_event_type(kz_call_event:doc()) ->
-                            {kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()}.
+          {kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()}.
 get_event_type(CallEvt) ->
     {Cat, Name} = kz_util:get_event_type(CallEvt),
     {Cat, Name, kz_call_event:call_id(CallEvt)}.
+
+
+%%------------------------------------------------------------------------------
+%% @doc If it is an emergency call (i.e 911 call) don't honor `privacy' settings.
+%% @end
+%%------------------------------------------------------------------------------
+-spec avoid_privacy_if_emergency_call(boolean(), stepswitch_resources:endpoints()) -> stepswitch_resources:endpoints().
+avoid_privacy_if_emergency_call('true', Endpoints) ->
+    lager:info("emergency call ongoing, ignoring privacy settings"),
+    Values = [{?KEY_PRIVACY_HIDE_NAME, 'false'}
+             ,{?KEY_PRIVACY_HIDE_NUMBER, 'false'}
+             ,{?KEY_PRIVACY_METHOD, <<"none">>}
+             ],
+    F = fun(E, Acc) -> [kz_json:set_values(Values, E) | Acc] end,
+    lists:foldl(F, [], Endpoints);
+avoid_privacy_if_emergency_call('false', Endpoints) ->
+    Endpoints.

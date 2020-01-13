@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2019, 2600Hz
+%%% @copyright (C) 2010-2020, 2600Hz
 %%% @doc Various utilities specific to ecallmgr. More general utilities go
 %%% in kazoo_util.erl
 %%%
@@ -95,7 +95,7 @@
                          ,channel_vars = [] :: kz_term:ne_binaries()
                          ,header_vars = [] :: kz_term:ne_binaries()
                          ,include_channel_vars = 'true' :: boolean()
-                         ,failover
+                         ,failover :: kz_term:api_object()
                          }).
 -type bridge_endpoint() :: #bridge_endpoint{}.
 
@@ -671,9 +671,9 @@ get_fs_key(Key) ->
                           ,kz_term:ne_binary() | kz_term:ne_binaries() | kz_json:object()
                           ,kz_term:ne_binary()
                           ) ->
-                                  {kz_term:ne_binary(), binary()} |
-                                  [{kz_term:ne_binary(), binary()}] |
-                                  'skip'.
+          {kz_term:ne_binary(), binary()} |
+          [{kz_term:ne_binary(), binary()}] |
+          'skip'.
 get_fs_key_and_value(<<"Hold-Media">>=Key, Media, UUID) ->
     {get_fs_key(Key), media_path(Media, 'extant', UUID, kz_json:new())};
 get_fs_key_and_value(<<"Diversions">>=Key, Diversions, _UUID) ->
@@ -770,7 +770,11 @@ classify_endpoints(Endpoints) ->
     lists:foldl(fun classify_endpoint/2, {[], []}, Endpoints).
 
 -spec classify_endpoint(bridge_endpoint(), {bridge_endpoints(), bridge_endpoints()}) -> {bridge_endpoints(), bridge_endpoints()}.
-classify_endpoint(#bridge_endpoint{channel_vars=CVs}=Endpoint, {Devices, Failovers}) ->
+classify_endpoint(#bridge_endpoint{channel_vars=CVs
+                                  ,failover=EndpointFailover
+                                  }=Endpoint
+                 ,{Devices, Failovers}
+                 ) ->
     IsFailoverEndpoint = lists:member(<<?CHANNEL_VAR_PREFIX, "Is-Failover='true'">>, CVs),
     IsRegistered = is_registered(Endpoint),
 
@@ -781,10 +785,17 @@ classify_endpoint(#bridge_endpoint{channel_vars=CVs}=Endpoint, {Devices, Failove
         'false' when IsRegistered ->
             lager:info("endpoint is an endpoint"),
             {[Endpoint | Devices], Failovers};
-        'false' ->
+        'false' when EndpointFailover =:= 'undefined' ->
             lager:info("endpoint is not failover nor registered, removing"),
-            {Devices, Failovers}
+            {Devices, Failovers};
+        'false' ->
+            lager:info("endpoint is not registered but has failover route defined"),
+            maybe_add_failover_route(EndpointFailover, {Devices, Failovers})
     end.
+
+maybe_add_failover_route(EndpointFailover, {Devices, Failovers}) ->
+    Endpoint = endpoint_jobj_to_record(EndpointFailover),
+    {Devices, maybe_use_fwd_endpoint(Endpoint, Failovers)}.
 
 -spec is_registered(bridge_endpoint()) -> boolean().
 is_registered(Endpoint) ->
@@ -998,8 +1009,8 @@ maybe_collect_worker_channel(Pid, Channels) ->
     end.
 
 -spec build_channel(bridge_endpoint() | kz_json:object()) ->
-                           {'ok', bridge_channel()} |
-                           {'error', 'invalid' | 'number_not_provided'}.
+          {'ok', bridge_channel()} |
+          {'error', 'invalid' | 'number_not_provided'}.
 build_channel(#bridge_endpoint{endpoint_type = <<"freetdm">>}=Endpoint) ->
     build_freetdm_channel(Endpoint);
 build_channel(#bridge_endpoint{endpoint_type = <<"skype">>}=Endpoint) ->
@@ -1010,8 +1021,8 @@ build_channel(EndpointJObj) ->
     build_channel(endpoint_jobj_to_record(EndpointJObj)).
 
 -spec build_freetdm_channel(bridge_endpoint()) ->
-                                   {'ok', bridge_channel()} |
-                                   {'error', 'number_not_provided'}.
+          {'ok', bridge_channel()} |
+          {'error', 'number_not_provided'}.
 build_freetdm_channel(#bridge_endpoint{number='undefined'}) ->
     {'error', 'number_not_provided'};
 build_freetdm_channel(#bridge_endpoint{invite_format = <<"e164">>
@@ -1039,16 +1050,16 @@ build_freetdm_channel(#bridge_endpoint{number=Number
     {'ok', <<"freetdm/", Span/binary, "/", ChannelSelection/binary, "/", Number/binary>>}.
 
 -spec build_skype_channel(bridge_endpoint()) ->
-                                 {'ok', bridge_channel()} |
-                                 {'error', 'number_not_provided'}.
+          {'ok', bridge_channel()} |
+          {'error', 'number_not_provided'}.
 build_skype_channel(#bridge_endpoint{user='undefined'}) ->
     {'error', 'number_not_provided'};
 build_skype_channel(#bridge_endpoint{user=User, interface=IFace}) ->
     {'ok', <<"skypopen/", IFace/binary, "/", User/binary>>}.
 
 -spec build_sip_channel(bridge_endpoint()) ->
-                               {'ok', bridge_channel()} |
-                               {'error', 'invalid'}.
+          {'ok', bridge_channel()} |
+          {'error', 'invalid'}.
 build_sip_channel(#bridge_endpoint{failover=Failover}=Endpoint) ->
     Routines = [fun get_sip_contact/1
                ,fun maybe_clean_contact/2
@@ -1091,8 +1102,8 @@ build_sip_channel_fold(Fun, Endpoint) ->
     end.
 
 -spec maybe_failover(kz_json:object()) ->
-                            {'ok', bridge_channel()} |
-                            {'error', 'invalid'}.
+          {'ok', bridge_channel()} |
+          {'error', 'invalid'}.
 maybe_failover(Endpoint) ->
     case kz_term:is_empty(Endpoint) of
         'true' -> {'error', 'invalid'};
@@ -1413,8 +1424,8 @@ convert_kazoo_app_name(App) ->
 
 -type media_types() :: 'new' | 'extant'.
 -spec lookup_media(kz_term:ne_binary(), media_types(), kz_term:ne_binary(), kz_json:object()) ->
-                          {'ok', kz_term:ne_binary()} |
-                          {'error', any()}.
+          {'ok', kz_term:ne_binary()} |
+          {'error', any()}.
 lookup_media(MediaName, Type, CallId, JObj) ->
     case kz_cache:fetch_local(?ECALLMGR_UTIL_CACHE
                              ,?ECALLMGR_PLAYBACK_MEDIA_KEY(MediaName)
@@ -1428,8 +1439,8 @@ lookup_media(MediaName, Type, CallId, JObj) ->
     end.
 
 -spec request_media_url(kz_term:ne_binary(), media_types(), kz_term:ne_binary(), kz_json:object()) ->
-                               {'ok', kz_term:ne_binary()} |
-                               {'error', any()}.
+          {'ok', kz_term:ne_binary()} |
+          {'error', any()}.
 request_media_url(MediaName, Type, CallId, JObj) ->
     MsgProps = props:filter_undefined(
                  [{<<"Media-Name">>, MediaName}
@@ -1457,8 +1468,8 @@ request_media_url(MediaName, Type, CallId, JObj) ->
     end.
 
 -spec maybe_cache_media_response(kz_term:ne_binary(), kz_json:objects()) ->
-                                        {'ok', kz_term:ne_binary()} |
-                                        {'error', 'not_found'}.
+          {'ok', kz_term:ne_binary()} |
+          {'error', 'not_found'}.
 maybe_cache_media_response(MediaName, MediaResp) ->
     case kz_json:find(<<"Stream-URL">>, MediaResp, <<>>) of
         <<>> ->
@@ -1505,7 +1516,7 @@ custom_sip_headers(Props) ->
                ).
 
 -spec maybe_aggregate_headers({kz_term:ne_binary(), kz_term:ne_binary()}, kz_term:proplist()) ->
-                                     kz_term:proplist().
+          kz_term:proplist().
 maybe_aggregate_headers(KV, Acc) ->
     {K, V} = normalize_custom_sip_header_name(KV),
     maybe_aggregate_headers(K, V, Acc).

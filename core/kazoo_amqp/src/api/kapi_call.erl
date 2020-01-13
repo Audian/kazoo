@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2019, 2600Hz
+%%% @copyright (C) 2011-2020, 2600Hz
 %%% @doc Call-related messages, like switch events, status requests, etc AMQP API.
 %%% @author James Aimonetti
 %%% @author Karl Anderson
@@ -482,7 +482,7 @@ publish_usurp_publisher(CallId, JObj) ->
 -spec publish_usurp_publisher(kz_term:ne_binary(), kz_term:api_terms(), kz_term:ne_binary()) -> 'ok'.
 publish_usurp_publisher(CallId, JObj, ContentType) ->
     {'ok', Payload} = kz_api:prepare_api_payload(JObj, ?PUBLISHER_USURP_CONTROL_VALUES, fun usurp_publisher/1),
-    kz_amqp_util:callevt_publish(?CALL_EVENT_ROUTING_KEY('publisher_usurp', CallId), Payload, ContentType).
+    kz_amqp_util:callevt_publish(?CALL_EVENT_ROUTING_KEY('usurp_publisher', CallId), Payload, ContentType).
 
 -spec get_status(kz_term:api_terms()) -> kz_term:ne_binary().
 get_status(API) when is_list(API) -> props:get_value(<<"Status">>, API);

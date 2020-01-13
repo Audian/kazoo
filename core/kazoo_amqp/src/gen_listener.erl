@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2019, 2600Hz
+%%% @copyright (C) 2011-2020, 2600Hz
 %%% @doc Behaviour for setting up an AMQP listener.
 %%% Add/remove responders for `Event-Cat'/`Event-Name' pairs. Each responder
 %%% corresponds to a module that has defined a `handle/1' function, receiving
@@ -46,6 +46,8 @@
 -export([start_link/3
         ,start_link/4
         ,start_link/5
+
+        ,stop/1
         ]).
 
 -export([start_listener/2]).
@@ -234,6 +236,10 @@ start_link(Name, Module, Params, InitArgs, Options) when is_atom(Module),
                                                          ->
     gen_server:start_link(Name, ?MODULE, [Module, Params, InitArgs], Options).
 
+-spec stop(kz_types:server_ref()) -> 'ok'.
+stop(Server) ->
+    gen_server:stop(Server).
+
 -spec queue_name(kz_types:server_ref()) -> kz_term:api_ne_binary().
 queue_name(Srv) -> gen_server:call(Srv, 'queue_name').
 
@@ -358,8 +364,8 @@ b_add_binding(Srv, Binding, Props) when is_binary(Binding)
 %% @end
 %%------------------------------------------------------------------------------
 -spec add_queue(kz_types:server_ref(), binary(), kz_term:proplist(), binding() | bindings()) ->
-                       {'ok', kz_term:ne_binary()} |
-                       {'error', any()}.
+          {'ok', kz_term:ne_binary()} |
+          {'error', any()}.
 add_queue(Srv, QueueName, QueueProps, {_Type, _Props}=Binding) ->
     add_queue(Srv, QueueName, QueueProps, [Binding]);
 add_queue(Srv, QueueName, QueueProps, [{_,_}|_]=Bindings) ->
@@ -405,8 +411,8 @@ execute(Srv, Function) when is_function(Function) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec init_state(list()) -> {'ok', state()} |
-                            {'stop', any()} |
-                            'ignore'.
+          {'stop', any()} |
+          'ignore'.
 init_state([Module, Params, ModuleState]) ->
     process_flag('trap_exit', 'true'),
     put('callid', Module),
@@ -414,9 +420,9 @@ init_state([Module, Params, ModuleState]) ->
     init(Module, Params, ModuleState, 'undefined').
 
 -spec init([atom() | kz_term:proplist(),...]) ->
-                  {'ok', state()} |
-                  {'stop', any()} |
-                  'ignore'.
+          {'ok', state()} |
+          {'stop', any()} |
+          'ignore'.
 init([Module, Params, InitArgs]) ->
     process_flag('trap_exit', 'true'),
     put('callid', Module),
@@ -436,7 +442,7 @@ init([Module, Params, InitArgs]) ->
     end.
 
 -spec init(atom(), kz_term:proplist(), module_state(), kz_term:api_reference()) ->
-                  {'ok', state()}.
+          {'ok', state()}.
 init(Module, Params, ModuleState, TimeoutRef) ->
     _ = channel_requisition(Params),
     _ = [add_responder(self(), Mod, Events)
@@ -739,22 +745,28 @@ handle_info(Message, State) ->
 %% Allows listeners to pass options to handlers.
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_event(kz_term:ne_binary(), kz_term:ne_binary(), deliver(), state()) ->  state().
+-spec handle_event(kz_term:ne_binary(), kz_term:ne_binary(), deliver(), state()) -> state().
 handle_event(Payload, <<"application/json">>, Deliver, State) ->
     JObj = kz_json:decode(Payload),
-    _ = kz_util:put_callid(JObj),
-    distribute_event(JObj, Deliver, State);
+    Old = kz_util:get_callid(),
+    'ok' = kz_util:put_callid(JObj),
+    NewState = distribute_event(JObj, Deliver, State),
+    kz_util:put_callid(Old),
+    NewState;
 handle_event(Payload, <<"application/erlang">>, Deliver, State) ->
     JObj = binary_to_term(Payload),
-    _ = kz_util:put_callid(JObj),
-    distribute_event(JObj, Deliver, State).
+    Old = kz_util:get_callid(),
+    'ok' = kz_util:put_callid(JObj),
+    NewState = distribute_event(JObj, Deliver, State),
+    kz_util:put_callid(Old),
+    NewState.
 
 %%------------------------------------------------------------------------------
 %% @doc Handles the AMQP messages prior to the spawning a handler.
 %% Allows listeners to pass options to handlers.
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_return(kz_term:ne_binary(), kz_term:ne_binary(), #'basic.return'{}, state()) ->  handle_cast_return().
+-spec handle_return(kz_term:ne_binary(), kz_term:ne_binary(), #'basic.return'{}, state()) -> handle_cast_return().
 handle_return(Payload, <<"application/json">>, BR, State) ->
     JObj = kz_json:decode(Payload),
     _ = kz_util:put_callid(JObj),
@@ -863,13 +875,30 @@ format_status(_Opt
     end.
 
 -spec distribute_event(kz_json:object(), deliver(), state()) -> state().
-distribute_event(JObj, Deliver, State) ->
-    case callback_handle_event(JObj, Deliver, State) of
+distribute_event(JObj, {_ , #'P_basic'{headers='undefined'}}=BasicDeliver, State) ->
+    case callback_handle_event(JObj, BasicDeliver, State) of
         'ignore' -> State;
         {'ignore', ModuleState} -> State#state{module_state=ModuleState};
-        {CallbackData, ModuleState} -> distribute_event(CallbackData, JObj, Deliver, State#state{module_state=ModuleState});
-        CallbackData -> distribute_event(CallbackData, JObj, Deliver, State)
+        {CallbackData, ModuleState} -> distribute_event(CallbackData, JObj, BasicDeliver, State#state{module_state=ModuleState});
+        CallbackData -> distribute_event(CallbackData, JObj, BasicDeliver, State)
+    end;
+distribute_event(JObj, {Deliver, #'P_basic'{headers=Headers}=Basic}=BasicDeliver, State) ->
+    case lists:keyfind(?KEY_DELIVER_TO_PID, 1, Headers) of
+        {?KEY_DELIVER_TO_PID, _, Pid} ->
+            Props = [{'basic', Basic}
+                    ,{'deliver', Deliver}
+                    ],
+            kz_term:to_pid(Pid) ! {'kapi', kapi:delivery_message(JObj, Props)},
+            State;
+        'false' ->
+            case callback_handle_event(JObj, BasicDeliver, State) of
+                'ignore' -> State;
+                {'ignore', ModuleState} -> State#state{module_state=ModuleState};
+                {CallbackData, ModuleState} -> distribute_event(CallbackData, JObj, BasicDeliver, State#state{module_state=ModuleState});
+                CallbackData -> distribute_event(CallbackData, JObj, BasicDeliver, State)
+            end
     end.
+
 
 -spec distribute_event(callback_data(), kz_json:object(), deliver(), state()) -> state().
 distribute_event(CallbackData
@@ -934,10 +963,10 @@ client_handle_event(JObj, {Module, Fun, 2}, CallbackData, _Deliver) ->
     Module:Fun(JObj, CallbackData).
 
 -spec callback_handle_event(kz_json:object(), deliver(), state()) ->
-                                   'ignore' |
-                                   {'ignore', module_state()} |
-                                   callback_data() |
-                                   {callback_data(), module_state()}.
+          'ignore' |
+          {'ignore', module_state()} |
+          callback_data() |
+          {callback_data(), module_state()}.
 callback_handle_event(_JObj
                      ,{BasicDeliver, Basic}
                      ,#state{module_state=ModuleState
@@ -997,8 +1026,8 @@ callback_handle_event(JObj
     end.
 
 -spec callback_handle_event(kz_json:object(), deliver(), mfa(), module_state()) ->
-                                   handle_event_return() |
-                                   {'EXIT', any()}.
+          handle_event_return() |
+          {'EXIT', any()}.
 callback_handle_event(JObj, _, {Module, Fun, 2}, ModuleState) ->
     catch Module:Fun(JObj, ModuleState);
 callback_handle_event(JObj, {BasicDeliver, _}, {Module, Fun, 3}, ModuleState) ->
@@ -1017,8 +1046,8 @@ maybe_event_matches_key({Cat, _}, {Cat, <<"*">>}) -> 'true';
 maybe_event_matches_key(_A, _B) -> 'false'.
 
 -spec start_amqp(kz_term:proplist(), boolean()) ->
-                        {'ok', binary()} |
-                        {'error', _}.
+          {'ok', binary()} |
+          {'error', _}.
 start_amqp(Props, AutoAck) ->
     QueueProps = props:get_value('queue_options', Props, []),
     QueueName = props:get_value('queue_name', Props, <<>>),
@@ -1188,7 +1217,7 @@ handle_rm_binding(Binding, Props, #state{queue=Q
     State#state{bindings=KeepBs}.
 
 -spec handle_add_binding(binding_module(), kz_term:proplist(), state()) ->
-                                state().
+          state().
 handle_add_binding(Binding, Props, #state{queue=Q
                                          ,bindings=Bs
                                          }=State) ->
@@ -1202,7 +1231,7 @@ handle_add_binding(Binding, Props, #state{queue=Q
     end.
 
 -spec handle_existing_binding(binding_module(), kz_term:proplist(), state(), kz_term:ne_binary(), kz_term:proplist(), bindings()) ->
-                                     state().
+          state().
 handle_existing_binding(Binding, Props, State, Q, ExistingProps, Bs) ->
     case binding_props_match(Props, ExistingProps) of
         'true' ->
@@ -1269,14 +1298,14 @@ maybe_remove_federated_binding(_Flag, _Binging, _Props, _State) ->
     'ok'.
 
 -spec broker_connections(federator_listeners(), kz_term:ne_binaries()) ->
-                                {kz_term:ne_binaries(), kz_term:ne_binaries()}.
+          {kz_term:ne_binaries(), kz_term:ne_binaries()}.
 broker_connections(Listeners, Brokers) ->
     lists:partition(fun(Broker) ->
                             props:get_value(Broker, Listeners) =/= 'undefined'
                     end, Brokers).
 
 -spec start_new_listeners(kz_term:ne_binaries(), binding_module(), kz_term:proplist(), state()) ->
-                                 {'ok', federator_listeners()}.
+          {'ok', federator_listeners()}.
 start_new_listeners(Brokers, Binding, Props, State) ->
     {'ok', [start_new_listener(Broker, Binding, Props, State)
             || Broker <- Brokers
@@ -1309,7 +1338,7 @@ update_existing_listener_bindings({_Broker, Pid}, Binding, Props) ->
     ?MODULE:add_binding(Pid, Binding, Props).
 
 -spec create_federated_params({binding_module(), kz_term:proplist()}, kz_term:proplist()) ->
-                                     kz_term:proplist().
+          kz_term:proplist().
 create_federated_params(FederateBindings, Params) ->
     QueueOptions = props:get_value('queue_options', Params, []),
     [{'responders', []}
@@ -1411,7 +1440,7 @@ maybe_channel_flow('true') ->
 maybe_channel_flow(_) -> 'ok'.
 
 -spec maybe_declare_exchanges(declare_exchanges()) ->
-                                     command_ret().
+          command_ret().
 maybe_declare_exchanges([]) -> 'ok';
 maybe_declare_exchanges(Exchanges) ->
     lists:foldl(fun maybe_declare_exchange/2, 'ok', Exchanges).

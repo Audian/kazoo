@@ -381,8 +381,6 @@ pages:
   - 'Kazoo Apps':
     - 'core/kazoo_apps/doc/README.md'
     - 'core/kazoo_apps/doc/kapps_notify_publisher.md'
-  - 'GCM':
-    - 'core/gcm/README.md'
   - 'Kazoo Translator':
     - 'core/kazoo_translator/doc/README.md'
   - 'Kazoo Number Manager':
@@ -451,6 +449,7 @@ pages:
       - 'core/kazoo_perf/doc/maintenance.md'
   - 'Kazoo Test FixtureDB':
       - 'core/kazoo_fixturedb/doc/README.md'
+      - 'Persist Database to disk': 'core/kazoo_fixturedb/doc/db-to-disk.md'
 - 'Articles':
   - 'Introduction to Storage Plans - S3': 'doc/blog/storage.md'
   - 'Bypass Media Mode': 'doc/blog/bypass_media.md'
