@@ -2122,6 +2122,60 @@
             },
             "type": "object"
         },
+        "callflows.conference_feature": {
+            "description": "Validator for the Conference feature code",
+            "properties": {
+                "config": {
+                    "$ref": "#/definitions/conferences",
+                    "description": "Build an ad-hoc conference using the conferences JSON schema",
+                    "type": "object"
+                },
+                "id": {
+                    "description": "Kazoo ID of the conference",
+                    "maxLength": 32,
+                    "minLength": 32,
+                    "type": "string"
+                },
+                "moderator": {
+                    "description": "Is the caller entering the conference as a moderator",
+                    "type": "boolean"
+                },
+                "play_entry_tone": {
+                    "description": "Should the Entry Tone be played",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ]
+                },
+                "play_exit_tone": {
+                    "description": "Should the Exit Tone be played",
+                    "type": [
+                        "boolean",
+                        "string"
+                    ]
+                },
+                "skip_module": {
+                    "description": "When set to true this callflow action is skipped, advancing to the wildcard branch (if any)",
+                    "type": "boolean"
+                },
+                "welcome_prompt": {
+                    "description": "Describes how the caller is greeted on entering a conference",
+                    "properties": {
+                        "media_id": {
+                            "description": "Media to play, either Kazoo media ID or URL",
+                            "type": "string"
+                        },
+                        "play": {
+                            "default": true,
+                            "description": "Should the Welcome Prompt be played",
+                            "type": "boolean"
+                        }
+                    },
+                    "type": "object"
+                }
+            },
+            "type": "object"
+        },
         "callflows.dead_air": {
             "description": "Validator for the dead_air callflow data object",
             "properties": {
@@ -4924,11 +4978,6 @@
                 "account": {
                     "description": "Information that applies to the account as a whole",
                     "properties": {
-                        "auth_realm": {
-                            "description": "The realm any device in the account will use to authenticate with",
-                            "minLength": 1,
-                            "type": "string"
-                        },
                         "caller_id": {
                             "properties": {
                                 "cid_name": {
@@ -13710,6 +13759,51 @@
             ],
             "type": "object"
         },
+        "kapi.dialplan.playseek": {
+            "description": "AMQP API for dialplan.playseek",
+            "properties": {
+                "Application-Name": {
+                    "enum": [
+                        "playseek"
+                    ],
+                    "type": "string"
+                },
+                "Call-ID": {
+                    "type": "string"
+                },
+                "Direction": {
+                    "type": "string"
+                },
+                "Duration": {
+                    "type": "string"
+                },
+                "Event-Category": {
+                    "enum": [
+                        "call"
+                    ],
+                    "type": "string"
+                },
+                "Event-Name": {
+                    "enum": [
+                        "command"
+                    ],
+                    "type": "string"
+                },
+                "Insert-At": {
+                    "enum": [
+                        "now"
+                    ],
+                    "type": "string"
+                }
+            },
+            "required": [
+                "Application-Name",
+                "Call-ID",
+                "Direction",
+                "Duration"
+            ],
+            "type": "object"
+        },
         "kapi.dialplan.playstop": {
             "description": "AMQP API for dialplan.playstop",
             "properties": {
@@ -16154,6 +16248,158 @@
             },
             "type": "object"
         },
+        "kapi.im.inbound": {
+            "description": "AMQP API for im.inbound",
+            "properties": {
+                "Account-ID": {
+                    "type": "string"
+                },
+                "Body": {
+                    "type": "string"
+                },
+                "Charges": {
+                    "type": "string"
+                },
+                "Custom-SIP-Headers": {
+                    "type": "object"
+                },
+                "Custom-Vars": {
+                    "type": "object"
+                },
+                "Event-Category": {
+                    "enum": [
+                        "sms",
+                        "mms"
+                    ],
+                    "type": "string"
+                },
+                "Event-Name": {
+                    "enum": [
+                        "inbound"
+                    ],
+                    "type": "string"
+                },
+                "From": {
+                    "type": "string"
+                },
+                "Message-ID": {
+                    "type": "string"
+                },
+                "Request": {
+                    "type": "string"
+                },
+                "Route-ID": {
+                    "type": "string"
+                },
+                "Route-Type": {
+                    "enum": [
+                        "onnet",
+                        "offnet"
+                    ],
+                    "type": "string"
+                },
+                "System-ID": {
+                    "type": "string"
+                },
+                "To": {
+                    "type": "string"
+                },
+                "Transaction-ID": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "Body",
+                "From",
+                "Message-ID",
+                "To"
+            ],
+            "type": "object"
+        },
+        "kapi.im.outbound": {
+            "description": "AMQP API for im.outbound",
+            "properties": {
+                "Account-ID": {
+                    "type": "string"
+                },
+                "Application-ID": {
+                    "type": "string"
+                },
+                "Body": {
+                    "type": "string"
+                },
+                "Custom-Vars": {
+                    "type": "object"
+                },
+                "Endpoints": {
+                    "items": {
+                        "$ref": "#/definitions/kapi.dialplan.bridge_endpoint",
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "Event-Category": {
+                    "enum": [
+                        "sms",
+                        "mms"
+                    ],
+                    "type": "string"
+                },
+                "Event-Name": {
+                    "enum": [
+                        "outbound"
+                    ],
+                    "type": "string"
+                },
+                "From": {
+                    "type": "string"
+                },
+                "Message-ID": {
+                    "type": "string"
+                },
+                "Originator-Flags": {
+                    "type": "string"
+                },
+                "Originator-Properties": {
+                    "type": "string"
+                },
+                "Request": {
+                    "type": "string"
+                },
+                "Route-ID": {
+                    "type": "string"
+                },
+                "Route-Type": {
+                    "enum": [
+                        "onnet",
+                        "offnet"
+                    ],
+                    "type": "string"
+                },
+                "System-ID": {
+                    "type": "string"
+                },
+                "Target-Flags": {
+                    "type": "string"
+                },
+                "Target-Properties": {
+                    "type": "string"
+                },
+                "To": {
+                    "type": "string"
+                },
+                "Transaction-ID": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "Body",
+                "From",
+                "Message-ID",
+                "To"
+            ],
+            "type": "object"
+        },
         "kapi.inspector.filter_req": {
             "description": "AMQP API for inspector.filter_req",
             "properties": {
@@ -17989,6 +18235,75 @@
             ],
             "type": "object"
         },
+        "kapi.notifications.number_feature_manual_action": {
+            "description": "AMQP API for notifications.number_feature_manual_action",
+            "properties": {
+                "Account-DB": {
+                    "type": "string"
+                },
+                "Account-ID": {
+                    "minLength": 1,
+                    "type": "string"
+                },
+                "Attachment-URL": {
+                    "type": "string"
+                },
+                "Bcc": {
+                    "type": "string"
+                },
+                "Cc": {
+                    "type": "string"
+                },
+                "Event-Category": {
+                    "enum": [
+                        "notification"
+                    ],
+                    "type": "string"
+                },
+                "Event-Name": {},
+                "Feature": {
+                    "type": "string"
+                },
+                "From": {
+                    "type": "string"
+                },
+                "HTML": {
+                    "type": "string"
+                },
+                "Number": {
+                    "minLength": 1,
+                    "type": "string"
+                },
+                "Preview": {
+                    "type": "boolean"
+                },
+                "Reply-To": {
+                    "type": "string"
+                },
+                "Subject": {
+                    "type": "string"
+                },
+                "Text": {
+                    "type": "string"
+                },
+                "To": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": [
+                        "string",
+                        "array"
+                    ]
+                }
+            },
+            "required": [
+                "Account-ID",
+                "Feature",
+                "Number",
+                "To"
+            ],
+            "type": "object"
+        },
         "kapi.notifications.outbound_fax": {
             "description": "AMQP API for notifications.outbound_fax",
             "properties": {
@@ -19524,6 +19839,115 @@
             ],
             "type": "object"
         },
+        "kapi.notifications.voicemail_deleted": {
+            "description": "AMQP API for notifications.voicemail_deleted",
+            "properties": {
+                "Account-DB": {
+                    "type": "string"
+                },
+                "Account-ID": {
+                    "type": "string"
+                },
+                "Attachment-URL": {
+                    "type": "string"
+                },
+                "Bcc": {
+                    "type": "string"
+                },
+                "Call-ID": {
+                    "type": "string"
+                },
+                "Caller-ID-Name": {
+                    "type": "string"
+                },
+                "Caller-ID-Number": {
+                    "type": "string"
+                },
+                "Cc": {
+                    "type": "string"
+                },
+                "Event-Category": {
+                    "enum": [
+                        "notification"
+                    ],
+                    "type": "string"
+                },
+                "Event-Name": {
+                    "enum": [
+                        "voicemail_deleted"
+                    ],
+                    "type": "string"
+                },
+                "From": {
+                    "type": "string"
+                },
+                "From-Realm": {
+                    "type": "string"
+                },
+                "From-User": {
+                    "type": "string"
+                },
+                "HTML": {
+                    "type": "string"
+                },
+                "Preview": {
+                    "type": "string"
+                },
+                "Reason": {
+                    "enum": [
+                        "dtmf",
+                        "delete_after_notify",
+                        "crossbar_action"
+                    ],
+                    "type": "string"
+                },
+                "Reply-To": {
+                    "type": "string"
+                },
+                "Subject": {
+                    "type": "string"
+                },
+                "Text": {
+                    "type": "string"
+                },
+                "To": {
+                    "type": "string"
+                },
+                "To-Realm": {
+                    "type": "string"
+                },
+                "To-User": {
+                    "type": "string"
+                },
+                "Voicemail-Box": {
+                    "type": "string"
+                },
+                "Voicemail-ID": {
+                    "type": "string"
+                },
+                "Voicemail-Length": {
+                    "type": "string"
+                },
+                "Voicemail-Timestamp": {
+                    "type": "string"
+                },
+                "Voicemail-Transcription": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "Account-ID",
+                "From-Realm",
+                "From-User",
+                "Reason",
+                "To-Realm",
+                "To-User",
+                "Voicemail-Box",
+                "Voicemail-ID",
+                "Voicemail-Timestamp"
+            ],
+            "type": "object"
+        },
         "kapi.notifications.voicemail_full": {
             "description": "AMQP API for notifications.voicemail_full",
             "properties": {
@@ -19647,6 +20071,9 @@
                 "Preview": {
                     "type": "string"
                 },
+                "Reason": {
+                    "type": "string"
+                },
                 "Reply-To": {
                     "type": "string"
                 },
@@ -19745,6 +20172,9 @@
                     "type": "string"
                 },
                 "Preview": {
+                    "type": "string"
+                },
+                "Reason": {
                     "type": "string"
                 },
                 "Reply-To": {
@@ -23309,6 +23739,9 @@
                 "Caller-ID-Number": {
                     "type": "string"
                 },
+                "Charges": {
+                    "type": "string"
+                },
                 "Contact": {
                     "type": "string"
                 },
@@ -24528,6 +24961,9 @@
                 "Account-ID": {
                     "type": "string"
                 },
+                "Auth-Account-ID": {
+                    "type": "string"
+                },
                 "Event-Category": {
                     "enum": [
                         "websockets"
@@ -24544,6 +24980,9 @@
                     "type": "string"
                 }
             },
+            "required": [
+                "Account-ID"
+            ],
             "type": "object"
         },
         "kapi.websockets.get_resp": {
@@ -24914,6 +25353,24 @@
                 "to": {
                     "description": "The SIP to header",
                     "type": "string"
+                },
+                "transcription": {
+                    "description": "The transcription data object",
+                    "properties": {
+                        "result": {
+                            "description": "The status of the transcription",
+                            "enum": [
+                                "success",
+                                "error"
+                            ],
+                            "type": "string"
+                        },
+                        "text": {
+                            "description": "The text of the transcription",
+                            "type": "string"
+                        }
+                    },
+                    "type": "object"
                 }
             },
             "required": [
@@ -25852,6 +26309,28 @@
                     "type": "string"
                 }
             },
+            "type": "object"
+        },
+        "mms": {
+            "description": "mms document",
+            "properties": {
+                "body": {
+                    "description": "mime encoded mms message",
+                    "minLength": 1,
+                    "type": "string"
+                },
+                "from": {
+                    "description": "caller-id-number, taken from user if absent",
+                    "type": "string"
+                },
+                "to": {
+                    "description": "callee-id-number",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "to"
+            ],
             "type": "object"
         },
         "multi_factor_provider": {
@@ -27400,6 +27879,33 @@
         "resources": {
             "description": "Schema for resources",
             "properties": {
+                "caller_id_options": {
+                    "description": "Caller ID options",
+                    "properties": {
+                        "type": {
+                            "description": "Caller ID type to choose",
+                            "enum": [
+                                "internal",
+                                "external",
+                                "emergency"
+                            ],
+                            "type": "string"
+                        }
+                    },
+                    "type": "object"
+                },
+                "cid_rules": {
+                    "description": "Regexps to match against caller ID",
+                    "items": {
+                        "description": "Regexp to match against caller ID",
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "classifiers": {
+                    "description": "Resource classifiers to use as rules when matching against dialed numbers",
+                    "type": "object"
+                },
                 "emergency": {
                     "default": false,
                     "description": "Determines if the resource represents emergency services",
@@ -27434,8 +27940,21 @@
                     "$ref": "#/definitions/formatters",
                     "type": "object"
                 },
+                "from_account_realm": {
+                    "default": false,
+                    "description": "When formatting SIP From on outbound requests, use the calling account's SIP realm",
+                    "type": "boolean"
+                },
                 "from_uri_realm": {
                     "description": "When formatting SIP From on outbound requests this can be used to override the realm",
+                    "type": "string"
+                },
+                "gateway_strategy": {
+                    "description": "The strategy of choosing gateways from list: sequential or random",
+                    "enum": [
+                        "sequential",
+                        "random"
+                    ],
                     "type": "string"
                 },
                 "gateways": {
@@ -28011,10 +28530,6 @@
                 "from": {
                     "description": "caller-id-number, taken from user if absent",
                     "type": "string"
-                },
-                "scheduled": {
-                    "description": "The timestamp to start delivering the message",
-                    "type": "integer"
                 },
                 "to": {
                     "description": "callee-id-number",
@@ -28839,6 +29354,10 @@
                     "description": "blackhole ip",
                     "type": "string"
                 },
+                "max_connections_per_ip": {
+                    "description": "blackhole max_connections_per_ip",
+                    "type": "integer"
+                },
                 "port": {
                     "default": 5555,
                     "description": "blackhole port",
@@ -28875,6 +29394,10 @@
                     "default": 100,
                     "description": "blackhole ssl_workers",
                     "type": "integer"
+                },
+                "url": {
+                    "description": "The advertised URL of the Kazoo websocket",
+                    "type": "string"
                 },
                 "use_plaintext": {
                     "default": true,
@@ -29135,6 +29658,11 @@
                     "description": "callflow singular call hook url",
                     "type": "string"
                 },
+                "vm_delete_amqp": {
+                    "default": false,
+                    "description": "callflow vm_delete_amqp",
+                    "type": "boolean"
+                },
                 "voicemail": {
                     "properties": {
                         "delete_after_notify": {
@@ -29150,6 +29678,11 @@
                         "force_require_pin": {
                             "default": false,
                             "description": "If true, ignore the setting on the vmbox and require all users to enter a pin",
+                            "type": "boolean"
+                        },
+                        "is_voicemail_ff_rw_enabled": {
+                            "default": false,
+                            "description": "callflow allow fastforward and rewind during voicemail message playback",
                             "type": "boolean"
                         },
                         "max_box_number_length": {
@@ -29205,6 +29738,22 @@
                         "save_after_notify": {
                             "default": false,
                             "description": "callflow save after notify",
+                            "type": "boolean"
+                        },
+                        "seek_duration_ms": {
+                            "default": 10000,
+                            "description": "callflow fastforward and rewind seek duration",
+                            "minimum": 0,
+                            "type": "integer"
+                        },
+                        "transcribe_default": {
+                            "default": false,
+                            "description": "callflow voicemail transcribe_default",
+                            "type": "boolean"
+                        },
+                        "vm_delete_amqp": {
+                            "default": false,
+                            "description": "send ampq message to notify about voicemail deletion",
                             "type": "boolean"
                         },
                         "vm_message_forward_type": {
@@ -29489,6 +30038,16 @@
                     "default": {},
                     "description": "cluster zones",
                     "type": "object"
+                }
+            },
+            "type": "object"
+        },
+        "system_config.cluster_manager": {
+            "description": "Schema for cluster_manager system_config",
+            "properties": {
+                "url": {
+                    "description": "The base URL of the 2600Hz cluster manager service",
+                    "type": "string"
                 }
             },
             "type": "object"
@@ -30122,6 +30681,11 @@
                     "default": 2682000,
                     "description": "crossbar.cdrs maximum range",
                     "type": "integer"
+                },
+                "should_filter_empty_strings": {
+                    "default": false,
+                    "description": "crossbar cdrs should_filter_empty_strings",
+                    "type": "boolean"
                 }
             },
             "type": "object"
@@ -32580,6 +33144,16 @@
             },
             "type": "object"
         },
+        "system_config.mobile": {
+            "description": "Schema for mobile system_config",
+            "properties": {
+                "url": {
+                    "description": "The base URL of the 2600Hz mobile service",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
         "system_config.mobile_manager": {
             "description": "Schema for mobile_manager system_config",
             "properties": {
@@ -32645,6 +33219,7 @@
                         "teletype_transaction",
                         "teletype_voicemail_full",
                         "teletype_voicemail_to_email",
+                        "teletype_voicemail_deleted",
                         "teletype_webhook_disabled"
                     ],
                     "description": "teletype modules to start when teletype is started",
@@ -33032,6 +33607,22 @@
                 "text_content_transfer_encoding": {
                     "default": "7BIT",
                     "description": "notify.transaction text content transfer encoding",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "system_config.notify.voicemail_deleted": {
+            "description": "Schema for notify.voicemail_deleted system_config",
+            "properties": {
+                "html_content_transfer_encoding": {
+                    "default": "7BIT",
+                    "description": "notify.voicemail_deleted html content transfer encoding",
+                    "type": "string"
+                },
+                "text_content_transfer_encoding": {
+                    "default": "7BIT",
+                    "description": "notify.voicemail_deleted text content transfer encoding",
                     "type": "string"
                 }
             },
@@ -33596,6 +34187,16 @@
             },
             "type": "object"
         },
+        "system_config.phonebook": {
+            "description": "Schema for phonebook system_config",
+            "properties": {
+                "url": {
+                    "description": "The base URL of the 2600Hz phonebook service",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
         "system_config.pivot": {
             "description": "Schema for pivot system_config",
             "properties": {
@@ -33678,11 +34279,6 @@
                     "description": "privacy method",
                     "type": "string"
                 },
-                "privacy_mode": {
-                    "default": "kazoo",
-                    "description": "Default privacy mode for anonymous calls",
-                    "type": "string"
-                },
                 "privacy_name": {
                     "default": "anonymous",
                     "description": "Default Caller ID Name should be shown for anonymous calls",
@@ -33692,6 +34288,11 @@
                     "default": "0000000000",
                     "description": "Default Caller ID Number should be shown for anonymous calls",
                     "type": "string"
+                },
+                "use_sip_privacy_header": {
+                    "default": false,
+                    "description": "privacy use_sip_privacy_header",
+                    "type": "boolean"
                 }
             },
             "type": "object"
@@ -34642,6 +35243,16 @@
                     "minimum": 1,
                     "type": "integer"
                 },
+                "compaction_list_dbs_chunk_size": {
+                    "default": 20,
+                    "description": "How many dbs to read between pauses",
+                    "type": "integer"
+                },
+                "compaction_list_dbs_pause_ms": {
+                    "default": 200,
+                    "description": "How long to pause before attempting to get the next chunk of dbs",
+                    "type": "integer"
+                },
                 "crawler_delay_time_ms": {
                     "default": 60000,
                     "description": "tasks crawler delay time in milliseconds",
@@ -34915,6 +35526,57 @@
             },
             "type": "object"
         },
+        "system_config.telemetry": {
+            "description": "Schema for telemetry system_config",
+            "properties": {
+                "cluster_id_anonymized": {
+                    "default": true,
+                    "description": "telemetry cluster_id_anonymized",
+                    "type": "boolean"
+                },
+                "collection_interval_s": {
+                    "default": 86400,
+                    "description": "telemetry collection_interval_s",
+                    "type": "integer"
+                },
+                "include_apps": {
+                    "default": true,
+                    "description": "telemetry include_apps",
+                    "type": "boolean"
+                },
+                "include_database": {
+                    "default": true,
+                    "description": "telemetry include_database",
+                    "type": "boolean"
+                },
+                "include_freeswitch": {
+                    "default": true,
+                    "description": "telemetry include_freeswitch",
+                    "type": "boolean"
+                },
+                "include_kamailio": {
+                    "default": true,
+                    "description": "telemetry include_kamailio",
+                    "type": "boolean"
+                },
+                "include_services": {
+                    "default": true,
+                    "description": "telemetry include_services",
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
+        "system_config.telemetry.waveguide": {
+            "description": "Schema for telemetry.waveguide system_config",
+            "properties": {
+                "activation": {
+                    "description": "telemetry waveguide activation",
+                    "type": "integer"
+                }
+            },
+            "type": "object"
+        },
         "system_config.teletype": {
             "description": "Schema for teletype system_config",
             "properties": {
@@ -35041,6 +35703,16 @@
                         "type": "string"
                     },
                     "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "system_config.webrtc": {
+            "description": "Schema for webrtc system_config",
+            "properties": {
+                "url": {
+                    "description": "The advertised URL of the webrtc socket",
+                    "type": "string"
                 }
             },
             "type": "object"
@@ -35959,6 +36631,11 @@
         "vmboxes": {
             "description": "Schema for a voicemail box",
             "properties": {
+                "announcement_only": {
+                    "default": false,
+                    "description": "Determine if the mailbox should only play announcements",
+                    "type": "boolean"
+                },
                 "check_if_owner": {
                     "default": true,
                     "description": "Determines if when the user calls their own voicemail they should be prompted to sign in",
@@ -35976,9 +36653,24 @@
                     },
                     "type": "array"
                 },
+                "include_message_on_notify": {
+                    "default": true,
+                    "description": "Whether or not to include the attachment when sending a new voicemail to email notification",
+                    "type": "boolean"
+                },
+                "include_transcription_on_notify": {
+                    "default": true,
+                    "description": "Whether or not to include the transcription when sending a new voicemail to email notification",
+                    "type": "boolean"
+                },
                 "is_setup": {
                     "default": false,
                     "description": "Determines if the user has completed the initial configuration",
+                    "type": "boolean"
+                },
+                "is_voicemail_ff_rw_enabled": {
+                    "default": false,
+                    "description": "callflow allow fastforward and rewind during voicemail message playback",
                     "type": "boolean"
                 },
                 "mailbox": {
@@ -36065,6 +36757,12 @@
                     "description": "Move the voicemail to save folder after the notification has been sent (This setting will override delete_after_notify)",
                     "type": "boolean"
                 },
+                "seek_duration_ms": {
+                    "default": 10000,
+                    "description": "callflow fastforward and rewind seek duration",
+                    "minimum": 0,
+                    "type": "integer"
+                },
                 "skip_envelope": {
                     "default": false,
                     "description": "Determines if the envelope should be skipped",
@@ -36117,6 +36815,10 @@
                     "$ref": "#/definitions/voicemail_keys.dtmf_key",
                     "description": "DTMF key which will exit the main menu when pressed"
                 },
+                "fastforward": {
+                    "$ref": "#/definitions/voicemail_keys.dtmf_key",
+                    "description": "DTMF key which will seek the playback forward for seek_duration_ms ms"
+                },
                 "hear_new": {
                     "$ref": "#/definitions/voicemail_keys.dtmf_key",
                     "description": "DTMF key which will play new voicemail messages when pressed at the main menu"
@@ -36168,6 +36870,10 @@
                 "return_main": {
                     "$ref": "#/definitions/voicemail_keys.dtmf_key",
                     "description": "DTMF key which will return to the main menu when pressed at the config menu"
+                },
+                "rewind": {
+                    "$ref": "#/definitions/voicemail_keys.dtmf_key",
+                    "description": "DTMF key which will seek the playback backward for seek_duration_ms ms"
                 },
                 "save": {
                     "$ref": "#/definitions/voicemail_keys.dtmf_key",
@@ -41804,6 +42510,84 @@
                     },
                     {
                         "$ref": "#/parameters/MIGRATION_ID"
+                    },
+                    {
+                        "$ref": "#/parameters/ACCOUNT_ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "request succeeded"
+                    }
+                }
+            }
+        },
+        "/accounts/{ACCOUNT_ID}/mms": {
+            "get": {
+                "parameters": [
+                    {
+                        "$ref": "#/parameters/auth_token_header"
+                    },
+                    {
+                        "$ref": "#/parameters/ACCOUNT_ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "request succeeded"
+                    }
+                }
+            },
+            "put": {
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "mms",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mms"
+                        }
+                    },
+                    {
+                        "$ref": "#/parameters/auth_token_header"
+                    },
+                    {
+                        "$ref": "#/parameters/ACCOUNT_ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "request succeeded"
+                    }
+                }
+            }
+        },
+        "/accounts/{ACCOUNT_ID}/mms/{SMS_ID}": {
+            "delete": {
+                "parameters": [
+                    {
+                        "$ref": "#/parameters/auth_token_header"
+                    },
+                    {
+                        "$ref": "#/parameters/SMS_ID"
+                    },
+                    {
+                        "$ref": "#/parameters/ACCOUNT_ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "request succeeded"
+                    }
+                }
+            },
+            "get": {
+                "parameters": [
+                    {
+                        "$ref": "#/parameters/auth_token_header"
+                    },
+                    {
+                        "$ref": "#/parameters/SMS_ID"
                     },
                     {
                         "$ref": "#/parameters/ACCOUNT_ID"

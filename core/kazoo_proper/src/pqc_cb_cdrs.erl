@@ -1,7 +1,7 @@
 -module(pqc_cb_cdrs).
 
 %% Manual testing
--export([seq/0, big_dataset_seq/0
+-export([seq/0, big_dataset_seq/0, straight_seq/0
         ,cleanup/0
         ]).
 
@@ -18,7 +18,7 @@
 -include("kazoo_proper.hrl").
 -include_lib("kazoo_stdlib/include/kz_databases.hrl").
 
--define(ACCOUNT_NAMES, [<<"account_for_cdrs">>]).
+-define(ACCOUNT_NAMES, [<<?MODULE_STRING>>]).
 -define(CDRS_PER_MONTH, 4).
 
 -spec summary(pqc_cb_api:state(), kz_term:ne_binary()) -> pqc_cb_api:response().
@@ -66,8 +66,8 @@ paginated_summary(API, AccountId) ->
     paginated_summary(API, AccountId, 'undefined').
 
 -spec paginated_summary(pqc_cb_api:state(), kz_term:ne_binary(), kz_term:api_ne_binary()) ->
-                               {'error', binary()} |
-                               kz_json:objects().
+          {'error', binary()} |
+          kz_json:objects().
 paginated_summary(API, AccountId, OwnerId) ->
     URL = paginated_cdrs_url(AccountId, OwnerId, ?CDRS_PER_MONTH div 2),
     RequestHeaders = pqc_cb_api:request_headers(API, []),
@@ -188,10 +188,12 @@ start_key(StartKey) -> "start_key=" ++ kz_term:to_list(StartKey).
 
 -spec seq() -> 'ok'.
 seq() ->
+    kapps_config:set_default(<<"crossbar.cdrs">>, <<"should_filter_empty_strings">>, 'true'),
     _ = straight_seq(),
     _ = paginated_seq(),
     big_dataset_seq().
 
+-spec straight_seq() -> 'ok'.
 straight_seq() ->
     API = pqc_cb_api:init_api(['crossbar'], ['cb_cdrs']),
     AccountId = create_account(API),
@@ -209,8 +211,6 @@ straight_seq() ->
     SummaryResp = summary(API, AccountId),
     lager:info("summary resp: ~s", [SummaryResp]),
     RespCDRs = kz_json:get_list_value(<<"data">>, kz_json:decode(SummaryResp)),
-    lager:info("Resp CDRs: ~p~n", [lists:usort([kz_doc:id(RespCDR) || RespCDR <- RespCDRs])]),
-    lager:info("Base CDRs: ~p~n", [lists:usort([kz_doc:id(CDR) || CDR <- CDRs])]),
     'true' = cdrs_exist(CDRs, RespCDRs),
     lager:info("all cdrs found in response"),
 
@@ -303,6 +303,8 @@ big_dataset_seq() ->
     lager:info("chunked/unpaginated and unbound memory resp returned ~p CDRs", [ChunkedUnpaginatedCount]),
     CDRCount = ChunkedUnpaginatedCount,
 
+    _ = kapps_config:set_default(<<"crossbar">>, <<"request_memory_limit">>, 1024 * 1024 * 5), % cap at 5Mb
+
     {'error', UnChunkedErrorJSON} = unpaginated_summary(API, AccountId, 'false'),
     lager:info("unchunked/unpaginated and bound memory resp: ~s", [UnChunkedErrorJSON]),
     UnChunkedErrorJObj = kz_json:decode(UnChunkedErrorJSON),
@@ -322,7 +324,11 @@ seq_cdr(API, AccountId, CDR) ->
 
     FetchResp = fetch(API, AccountId, CDRId),
     lager:info("~s: fetch resp ~s", [CDRId, FetchResp]),
-    'true' = cdr_exists(CDR, [kz_json:get_json_value(<<"data">>, kz_json:decode(FetchResp))]),
+    FetchedJObj = kz_json:get_json_value(<<"data">>, kz_json:decode(FetchResp)),
+    'true' = cdr_exists(CDR, [FetchedJObj]),
+
+    %% KZOO-45: Ensure empty strings have been stripped
+    'undefined' = kz_json:get_ne_binary_value(<<"media_server">>, FetchedJObj),
 
     %% Should be able to convert CDR ID to interaction_id
     LegsResp = legs(API, AccountId, CDRId),

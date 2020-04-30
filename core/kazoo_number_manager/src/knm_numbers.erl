@@ -272,18 +272,27 @@ create(Nums, Options) ->
 %%------------------------------------------------------------------------------
 
 -spec move(kz_term:ne_binaries(), kz_term:ne_binary()) -> ret().
-move(Nums, MoveTo) ->
+move(Nums, ?MATCH_ACCOUNT_RAW(MoveTo)) ->
     move(Nums, MoveTo, knm_number_options:default()).
 
 -spec move(kz_term:ne_binaries(), kz_term:ne_binary(), knm_number_options:options()) -> ret().
 move(Nums, ?MATCH_ACCOUNT_RAW(MoveTo), Options0) ->
-    Options = props:set_value('assign_to', MoveTo, Options0),
-    {TFound, NotFounds} = take_not_founds(do_get(Nums, Options)),
+    Options = knm_number_options:set_assign_to(Options0, MoveTo),
     Updates = knm_number_options:to_phone_number_setters(Options0),
-    TUpdated = do_in_wrap(fun (T) -> knm_phone_number:setters(T, Updates) end, TFound),
+    move_with_updates(Nums, Options, Updates).
+
+-spec move_with_updates(kz_term:ne_binaries(), knm_number_options:options(), knm_phone_number:set_functions()) -> ret().
+move_with_updates(Nums, Options, Updates) ->
+    {TFound, NotFounds} = take_not_founds(do_get(Nums, Options)),
+
+    TUpdated = update_found(TFound, Updates),
     TDiscovered = do(fun discover/1, new(Options, NotFounds)),
+
     T = merge_okkos(TUpdated, TDiscovered),
     ret(do(fun move_to/1, T)).
+
+update_found(TFound, Updates) ->
+    do_in_wrap(fun (T) -> knm_phone_number:setters(T, Updates) end, TFound).
 
 %%------------------------------------------------------------------------------
 %% @doc Attempts to update some phone_number fields.
@@ -635,6 +644,7 @@ save_numbers(T) ->
     pipe(T, [fun knm_providers:save/1
             ,fun save_phone_numbers/1
             ,fun update_services/1
+            ,fun callbacks/1
             ]).
 
 -spec update_services(collection()) -> collection().
@@ -688,17 +698,7 @@ run_services([AccountId|AccountIds], Updates, UpdatedServicesAcc) ->
 check_creditably(_Services, _Quotes, 'false') ->
     'ok';
 check_creditably(Services, Quotes, 'true') ->
-    Key = [<<"difference">>, <<"billable">>],
-    Additions = [begin
-                     Changes = kz_services_item:changes(Item),
-                     BillableQuantity = kz_json:get_integer_value(Key, Changes, 0),
-                     Rate = kz_services_item:rate(Item),
-                     BillableQuantity * Rate
-                 end
-                 || Invoice <- kz_services_invoices:billable_additions(Quotes),
-                    Item <- kz_services_invoice:items(Invoice),
-                    kz_services_item:has_billable_additions(Item)
-                ],
+    Additions = service_additions(Quotes),
     check_creditably(Services, Quotes, lists:sum(Additions));
 check_creditably(_Services, _Quotes, Amount) when Amount =< 0 ->
     'ok';
@@ -794,6 +794,57 @@ services_group_number(PhoneNumber, AssignedTo, PrevAssignedTo) ->
     ,{[PrevAssignedTo, <<"proposed">>], kz_json:new()}
     ,{[PrevAssignedTo, <<"current">>], CurrentJObj}
     ].
+
+-spec service_additions(kz_services_invoices:invoices()) -> list().
+service_additions(Quotes) ->
+    kz_services_invoices:foldl(fun service_additions_fold/2, [], kz_services_invoices:billable_additions(Quotes)).
+
+-spec service_additions_fold(kz_services_invoice:invoice(), list()) -> list().
+service_additions_fold(Invoice, Acc) ->
+    kz_services_items:foldl(fun service_addition_fold/2, Acc, kz_services_invoice:items(Invoice)).
+
+-spec service_addition_fold(kz_services_item:item(), list()) -> list().
+service_addition_fold(Item, Acc) ->
+    Key = [<<"difference">>, <<"billable">>],
+    case kz_services_item:has_billable_additions(Item) of
+        false ->
+            Acc;
+        true ->
+            Changes = kz_services_item:changes(Item),
+            BillableQuantity = kz_json:get_integer_value(Key, Changes, 0),
+            Rate = kz_services_item:rate(Item),
+            [BillableQuantity * Rate | Acc]
+    end.
+
+-endif.
+
+-spec callbacks(collection()) -> collection().
+-ifdef(TEST).
+%% FIXME: opaque
+callbacks(T=#{todo := Ns}) -> ok(Ns, T).
+-else.
+%% FIXME: opaque
+callbacks(T=#{'todo' := OK, 'options' := Options}) ->
+    case knm_number_options:dry_run(Options) of
+        'true' ->
+            ok(OK, T);
+        'false' ->
+            _ = kz_util:spawn(fun do_callback/2, [OK, fun knm_phone_number:on_success/1]),
+            ok(OK, T)
+    end.
+
+-spec do_callback(knm_number:knm_numbers(), fun()) -> 'ok'.
+do_callback(Numbers, FetchFun) ->
+    Fun = fun(Number) ->
+                  PN = knm_number:phone_number(Number),
+                  CBs = FetchFun(PN),
+                  FunCB = fun({CB, Args}) ->
+                                  catch erlang:apply(CB, [PN | Args])
+                          end,
+                  plists:foreach(FunCB, CBs)
+          end,
+    plists:foreach(Fun, Numbers),
+    'ok'.
 -endif.
 
 reconcile_number(T0, Options) ->

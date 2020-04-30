@@ -199,6 +199,7 @@ migrate(Pause) ->
 
     _ = kazoo_bindings:map(binding('migrate'), []),
 
+    _ = maybe_log_telemetry_warning(),
     'no_return'.
 
 -spec migrate(integer(), kz_term:ne_binaries()) -> 'no_return'.
@@ -503,24 +504,38 @@ refresh() ->
 -spec refresh(kz_term:ne_binaries(), kz_term:text() | non_neg_integer()) -> 'no_return'.
 refresh(Databases, Pause) ->
     Total = length(Databases),
-    refresh(Databases, kz_term:to_integer(Pause), Total).
+    refresh(Databases, kz_term:to_integer(Pause), Total, []).
 
--spec refresh(kz_term:ne_binaries(), non_neg_integer(), non_neg_integer()) -> 'no_return'.
-refresh([], _, _) -> 'no_return';
-refresh([Database|Databases], Pause, Total) ->
-    io:format("~p (~p/~p) refreshing database '~s'~n"
-             ,[self(), length(Databases) + 1, Total, Database]
-             ),
-    _ = case refresh(Database) of
-            {'error', _Reason} ->
-                io:format("    - refresh failed: ~p~n", [_Reason]);
-            Bol -> Bol
-        end,
-    _ = case Pause < 1 of
-            'false' -> timer:sleep(Pause);
-            'true' -> 'ok'
-        end,
-    refresh(Databases, Pause, Total).
+-spec refresh(kz_term:ne_binaries(), non_neg_integer(), non_neg_integer(), [string()]) -> 'no_return'.
+refresh([], _, _, []) ->
+    'no_return';
+refresh([], _, _, [_H|_T] = Unexpected) ->
+    io:format("WARNING: although the migrate command finished it got the following exceptions~n"),
+    _ = lists:foreach(fun(Message) -> io:format("~s~n", [Message]) end, Unexpected),
+    'no_return';
+refresh([Database|Databases], Pause, Total, Unexpected) ->
+    NewUnexpected =
+        try
+            io:format("~p (~p/~p) refreshing database '~s'~n"
+                     ,[self(), length(Databases) + 1, Total, Database]
+                     ),
+            _ = case refresh(Database) of
+                    {'error', _Reason} ->
+                        io:format("    - refresh failed: ~p~n", [_Reason]);
+                    Bol -> Bol
+                end,
+            _ = case Pause < 1 of
+                    'false' -> timer:sleep(Pause);
+                    'true' -> 'ok'
+                end,
+            Unexpected
+        catch
+            ?STACKTRACE(Error, Reason, StackTrace)
+            [io_lib:format("WARNING: Unable to refresh/migrate db ~s! ~s: {~p, ~p}",
+                           [Database, Error, Reason, StackTrace])
+             | Unexpected]
+            end,
+    refresh(Databases, Pause, Total, NewUnexpected).
 
 -spec get_databases() -> kz_term:ne_binaries().
 get_databases() ->
@@ -570,7 +585,7 @@ remove_deprecated_databases([]) -> 'ok';
 remove_deprecated_databases([Database|Databases]) ->
     _ = case kz_datamgr:db_classification(Database) of
             'deprecated' ->
-                io:format("    archive and remove depreciated database ~s~n", [Database]),
+                io:format("    archive and remove deprecated database ~s~n", [Database]),
                 _ = kz_datamgr:db_archive(Database),
                 maybe_delete_db(Database);
             _Else -> 'ok'
@@ -600,6 +615,16 @@ ensure_aggregates([Account|Accounts], Total) ->
 
 -spec ensure_aggregate(kz_term:ne_binary()) -> 'ok'.
 ensure_aggregate(Account) ->
+    ensure_aggregate(Account
+                    ,kz_datamgr:open_doc(kz_util:format_account_db(Account)
+                                        ,kz_util:format_account_id(Account)
+                                        )
+                    ).
+
+-spec ensure_aggregate(kz_term:ne_binary(), kz_datamgr:get_results_return()) -> 'ok'.
+ensure_aggregate(Account, {'error', 'not_found'}) ->
+    io:format("necessary documents from account '~s' are missing, skipping migration~n", [Account]);
+ensure_aggregate(Account, _) ->
     io:format("ensuring necessary documents from account '~s' are in aggregate dbs~n"
              ,[Account]
              ),
@@ -1034,7 +1059,7 @@ fix_services_tree(AccountId, Tree) ->
     Services = kz_services:fetch(AccountId),
     fix_services_tree(Services, Tree, kz_services:services_jobj(Services)).
 
--spec fix_services_tree(kz_term:ne_binary(), kz_term:ne_binaries(), kzd_services:doc()) -> 'ok'.
+-spec fix_services_tree(kz_services:services(), kz_term:ne_binaries(), kzd_services:doc()) -> 'ok'.
 fix_services_tree(Services, Tree, ServicesJObj) ->
     case kzd_services:tree(ServicesJObj) =:= Tree of
         'true' -> 'ok';
@@ -2166,19 +2191,21 @@ check_release() ->
 
 -spec run_check(fun()) -> 'ok'.
 run_check(CheckFun) ->
+    StartTimeMs = kz_time:now_ms(),
     {Pid, Ref} = kz_util:spawn_monitor(CheckFun, []),
-    wait_for_check(Pid, Ref).
+    wait_for_check(Pid, Ref, StartTimeMs).
 
--spec wait_for_check(pid(), reference()) -> 'ok'.
-wait_for_check(Pid, Ref) ->
+-spec wait_for_check(pid(), reference(), pos_integer()) -> 'ok'.
+wait_for_check(Pid, Ref, StartTimeMs) ->
     receive
-        {'DOWN', Ref, 'process', Pid, 'normal'} -> 'ok';
+        {'DOWN', Ref, 'process', Pid, 'normal'} ->
+            lager:info("check finished in ~pms", [kz_time:elapsed_ms(StartTimeMs)]);
         {'DOWN', Ref, 'process', Pid, Reason} ->
-            lager:error("check in ~p failed to run: ~p", [Pid, Reason]),
+            lager:error("check in ~p failed to run after ~pms: ~p", [Pid, kz_time:elapsed_ms(StartTimeMs), Reason]),
             throw(Reason)
     after 5 * ?MILLISECONDS_IN_MINUTE ->
             lager:error("check in ~p timed out", [Pid]),
-            exit(Pid, 'timeout'),
+            exit(Pid, 'kill'),
             throw('timeout')
     end.
 
@@ -2229,3 +2256,38 @@ migration_4_0_ran() ->
 migration_ran() ->
     lager:info("migrating"),
     'no_return' =:= migrate().
+
+-spec maybe_log_telemetry_warning() -> 'no_return'.
+maybe_log_telemetry_warning() ->
+    print_header(),
+    maybe_log_telemetry_warning(wg_util:days_remaining()).
+
+-spec maybe_log_telemetry_warning(non_neg_integer()) -> 'no_return'.
+maybe_log_telemetry_warning(Days)
+  when is_integer(Days)
+       andalso Days > 0 ->
+    io:format("~n~n      KAZOO telemetry will activate in ~p days.~n~n", [Days]),
+    'no_return';
+maybe_log_telemetry_warning(_Days) ->
+    io:format("~n~n      KAZOO telemetry is activated.~n~n"),
+    'no_return'.
+
+-spec print_header() -> 'no_return'.
+print_header() ->
+    io:format("~n~n"),
+    io:format("     KAZOO collects anonymous telemetry data by default so that we can provide~n"),
+    io:format("     you with the best performance, stability, and security. It enables us to~n"),
+    io:format("     continuously improve the platform for you and helps inform our roadmap~n"),
+    io:format("     decisions so we can create the products, features, and functionality that~n"),
+    io:format("     will best serve you. Rest assured — no sensitive data is transmitted and~n"),
+    io:format("     metrics are limited to aggregate values, aggregate statistics, and~n"),
+    io:format("     software version information.~n~n"),
+    io:format("     By allowing us to collect this data, you are making a contribution to~n"),
+    io:format("     the KAZOO community and are helping us make KAZOO better for you and~n"),
+    io:format("     the entire KAZOO community. You can opt-out at any time by consulting~n"),
+    io:format("     the configuration document in the system_config database.~n~n"),
+    io:format("     Here are a few examples:~n"),
+    io:format("       - https://success.trendmicro.com/data-collection-disclosure~n"),
+    io:format("       - https://www.mozilla.org/en-US/privacy/firefox/~n"),
+    io:format("       - https://derflounder.wordpress.com/2019/07/23/suppressing-microsoft-autoupdates-required-data-notice-screen/~n"),
+    'no_return'.

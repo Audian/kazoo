@@ -105,7 +105,7 @@ authn_resp_xml(<<"gsm">>, JObj) ->
     {'ok', [VariablesEl, ParamsEl, HeadersEl]};
 authn_resp_xml(<<"password">>, JObj) ->
     PassEl = param_el(<<"password">>, kz_json:get_value(<<"Auth-Password">>, JObj)),
-    ParamsEl = params_el([PassEl]),
+    ParamsEl = params_el([PassEl | authn_resp_params(JObj)]),
 
     VariableEls = [variable_el(K, V) || {K, V} <- get_channel_params(JObj)],
     VariablesEl = variables_el(VariableEls),
@@ -124,6 +124,19 @@ authn_resp_xml(<<"ip">>, _JObj) ->
 authn_resp_xml(_Method, _JObj) ->
     lager:debug("unknown method ~s", [_Method]),
     empty_response().
+
+-spec authn_resp_params(kz_json:object()) -> list().
+authn_resp_params(JObj) ->
+    Action = kz_json:get_value(<<"Auth-Action">>, JObj),
+    authn_resp_params(Action, JObj).
+
+-spec authn_resp_params(kz_term:ne_binary(), kz_json:object()) -> list().
+authn_resp_params(<<"jsonrpc-authenticate">>, _JObj) ->
+    [param_el(<<"jsonrpc-allowed-methods">>, <<"verto">>)
+    ,param_el(<<"jsonrpc-allowed-event-channels">>, <<"conference">>)
+    ];
+authn_resp_params(_, _JObj) ->
+    [].
 
 -spec reverse_authn_resp_xml(kz_term:api_terms()) -> {'ok', iolist()}.
 reverse_authn_resp_xml([_|_]=RespProp) ->
@@ -475,7 +488,8 @@ check_dtmf_type(Props) ->
 
 -spec build_leg_vars(kz_json:object() | kz_term:proplist()) -> kz_term:ne_binaries().
 build_leg_vars([]) -> [];
-build_leg_vars([_|_]=Prop) -> lists:foldr(fun kazoo_var_to_fs_var/2, [], Prop);
+build_leg_vars([_|_]=Prop) ->
+    lists:foldr(fun kazoo_var_to_fs_var/2, maybe_endpoint_privacy_header(Prop), Prop);
 build_leg_vars(JObj) -> build_leg_vars(kz_json:to_proplist(JObj)).
 
 -spec get_leg_vars(kz_json:object() | kz_term:proplist()) -> iolist().
@@ -491,13 +505,25 @@ get_leg_vars([Binary|_]=Binaries)
 get_leg_vars([_|_]=Prop) ->
     ["[^^", ?BRIDGE_CHANNEL_VAR_SEPARATOR
     ,string:join([kz_term:to_list(V)
-                  || V <- lists:foldr(fun kazoo_var_to_fs_var/2, [], Prop)
+                  || V <- lists:foldr(fun kazoo_var_to_fs_var/2
+                                     ,maybe_endpoint_privacy_header(Prop)
+                                     ,Prop
+                                     )
                  ]
                 ,?BRIDGE_CHANNEL_VAR_SEPARATOR
                 )
     ,"]"
     ];
 get_leg_vars(JObj) -> get_leg_vars(kz_json:to_proplist(JObj)).
+
+-spec maybe_endpoint_privacy_header(kz_term:proplist()) -> kz_term:ne_binaries().
+maybe_endpoint_privacy_header(Prop) ->
+    case kz_privacy:has_flags(Prop)
+        andalso kz_privacy:use_sip_privacy_header()
+    of
+        'true' -> [<<"sip_h_Privacy=id">>];
+        'false' -> []
+    end.
 
 -spec get_channel_vars(kz_json:object() | kz_term:proplist()) -> iolist().
 get_channel_vars([]) -> [];
@@ -546,23 +572,12 @@ channel_vars_handle_asserted_identity({Props, Results}=Acc) ->
 
 -spec build_asserted_identity(kz_term:ne_binary(), kz_term:prolist(), iolist()) -> channel_var_fold().
 build_asserted_identity(AssertedIdentity, Props, Results) ->
-    case kz_privacy:has_flags(Props) of
-        'true' ->
-            {Props
-            ,[<<"sip_cid_type=none">>
-             ,<<"sip_h_Privacy=id">>
-             ,<<"sip_h_P-Asserted-Identity=", AssertedIdentity/binary>>
-                  | Results
-             ]
-            };
-        'false' ->
-            {Props
-            ,[<<"sip_cid_type=none">>
-             ,<<"sip_h_P-Asserted-Identity=", AssertedIdentity/binary>>
-                  | Results
-             ]
-            }
-    end.
+    {Props
+    ,[<<"sip_cid_type=none">>
+     ,<<"sip_h_P-Asserted-Identity='", AssertedIdentity/binary, "'">>
+          | Results
+     ] ++ maybe_endpoint_privacy_header(Props)
+    }.
 
 -spec create_asserted_identity_header(kz_term:api_binary(), kz_term:api_binary(), kz_term:api_binary()) ->
           kz_term:api_binary().
@@ -619,9 +634,8 @@ kazoo_var_to_fs_var({<<"origination_uuid">> = K, UUID}, Vars) ->
     [ <<K/binary, "=", UUID/binary>> | Vars];
 
 kazoo_var_to_fs_var({<<"Hold-Media">>, Media}, Vars) ->
-    [list_to_binary(["hold_music="
-                    ,kz_term:to_list(ecallmgr_util:media_path(Media, 'extant', get('callid'), kz_json:new()))
-                    ])
+    MediaPath = ecallmgr_util:moh_media_path(Media, 'extant', get('callid'), kz_json:new()),
+    [list_to_binary(["hold_music=", MediaPath])
      | Vars];
 
 kazoo_var_to_fs_var({<<"Codecs">>, []}, Vars) ->
@@ -730,7 +744,8 @@ kazoo_var_to_fs_var_fold(K, V, Acc) ->
     case lists:keyfind(K, 1, ?SPECIAL_CHANNEL_VARS) of
         'false' ->
             [list_to_binary([?CHANNEL_VAR_PREFIX, kz_term:to_list(K)
-                            ,"='", kz_term:to_list(V), "'"])
+                            ,"='", kz_term:to_list(V), "'"
+                            ])
              | Acc];
         {_, <<"group_confirm_file">>} ->
             [list_to_binary(["group_confirm_file='"
@@ -806,12 +821,12 @@ is_custom_sip_header(_) -> 'false'.
 -spec arrange_acl_node({kz_term:ne_binary(), kz_json:object()}, orddict:orddict()) -> orddict:orddict().
 arrange_acl_node({_, JObj}, Dict) ->
     AclList = kz_json:get_value(<<"network-list-name">>, JObj),
-
-    NodeEl = acl_node_el(kz_json:get_value(<<"type">>, JObj), kz_json:get_value(<<"cidr">>, JObj)),
-
+    Type = kz_json:get_value(<<"type">>, JObj),
+    CIDR = kz_json:get_value(<<"cidr">>, JObj),
+    Ports = kz_json:get_value(<<"ports">>, JObj),
+    NodeEl = acl_node_el(Type, CIDR, Ports),
     case orddict:find(AclList, Dict) of
         {'ok', ListEl} ->
-            lager:debug("found existing list ~s", [AclList]),
             orddict:store(AclList, prepend_child(ListEl, NodeEl), Dict);
         'error' ->
             lager:debug("creating new list xml for ~s", [AclList]),
@@ -833,13 +848,21 @@ context(JObj, Props) ->
 %%%-----------------------------------------------------------------------------
 %% XML record creators and helpers
 %%%-----------------------------------------------------------------------------
--spec acl_node_el(kz_types:xml_attrib_value(), kz_types:xml_attrib_value()) -> kz_types:xml_el() | kz_types:xml_els().
-acl_node_el(Type, CIDRs) when is_list(CIDRs) ->
-    [acl_node_el(Type, CIDR) || CIDR <- CIDRs];
-acl_node_el(Type, CIDR) ->
+-spec acl_node_el(kz_types:xml_attrib_value(), kz_types:xml_attrib_value(), kz_term:api_integers()) -> kz_types:xml_el() | kz_types:xml_els().
+acl_node_el(Type, CIDRs, Ports) when is_list(CIDRs) ->
+    [acl_node_el(Type, CIDR, Ports) || CIDR <- CIDRs];
+acl_node_el(Type, CIDR, 'undefined') ->
     #xmlElement{name='node'
                ,attributes=[xml_attrib('type', Type)
                            ,xml_attrib('cidr', CIDR)
+                           ]
+               };
+acl_node_el(Type, CIDR, Ports) ->
+    BinPorts = kz_binary:join([kz_term:to_binary(P) || P <- Ports], <<",">>),
+    #xmlElement{name='node'
+               ,attributes=[xml_attrib('type', Type)
+                           ,xml_attrib('cidr', CIDR)
+                           ,xml_attrib('ports', BinPorts)
                            ]
                }.
 

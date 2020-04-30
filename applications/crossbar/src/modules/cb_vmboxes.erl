@@ -417,6 +417,7 @@ delete(Context, BoxId) ->
     AccountId = cb_context:account_id(Context),
     Msgs = kvm_messages:get(AccountId, BoxId),
     MsgIds = [kzd_box_message:media_id(M) || M <- Msgs],
+    'ok' = maybe_publish_voicemail_deleted(AccountId, BoxId, MsgIds),
     _ = kvm_messages:change_folder(?VM_FOLDER_DELETED, MsgIds, AccountId, BoxId, add_pvt_auth_funs(Context)),
     C = crossbar_doc:delete(Context),
     update_mwi(C, BoxId).
@@ -425,6 +426,7 @@ delete(Context, BoxId) ->
 delete(Context, BoxId, ?MESSAGES_RESOURCE) ->
     AccountId = cb_context:account_id(Context),
     MsgIds = cb_context:resp_data(Context),
+    'ok' = maybe_publish_voicemail_deleted(AccountId, BoxId, MsgIds),
     Result = kvm_messages:change_folder({?VM_FOLDER_DELETED, 'true'}, MsgIds, AccountId, BoxId, add_pvt_auth_funs(Context)),
     C = crossbar_util:response(Result, Context),
     update_mwi(C, BoxId).
@@ -432,6 +434,7 @@ delete(Context, BoxId, ?MESSAGES_RESOURCE) ->
 -spec delete(cb_context:context(), path_token(), path_token(), path_token()) -> cb_context:context().
 delete(Context, BoxId, ?MESSAGES_RESOURCE, MediaId) ->
     AccountId = cb_context:account_id(Context),
+    'ok' = maybe_publish_voicemail_deleted(AccountId, BoxId, [MediaId]),
     case kvm_message:change_folder({?VM_FOLDER_DELETED, 'true'}, MediaId, AccountId, BoxId, add_pvt_auth_funs(Context)) of
         {'ok', Message} ->
             C = crossbar_util:response(Message, Context),
@@ -471,6 +474,29 @@ add_pvt_auth(JObj, Context) ->
     kz_json:set_values(AuthUpdates, JObj).
 
 %%------------------------------------------------------------------------------
+%% @doc
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_publish_voicemail_deleted(kz_term:ne_binary(), path_token(), path_tokens()) -> 'ok'.
+maybe_publish_voicemail_deleted(AccountId, BoxId, MessageIds) ->
+    Messages = kz_json:get_list_value(<<"succeeded">>, kvm_messages:fetch(AccountId, MessageIds, BoxId), []),
+    maybe_publish_voicemail_deleted(BoxId, Messages).
+
+-spec maybe_publish_voicemail_deleted(path_token(), kz_json:objects()) -> 'ok'.
+maybe_publish_voicemail_deleted(_BoxId, []) -> 'ok';
+maybe_publish_voicemail_deleted(BoxId, JObjs) ->
+    publish_voicemail_deleted(BoxId, JObjs).
+
+-spec publish_voicemail_deleted(path_token(), kz_json:objects()) -> 'ok'.
+publish_voicemail_deleted(BoxId, JObjs) ->
+    lists:foreach(
+      fun(JObj) ->
+              kvm_util:publish_voicemail_deleted(BoxId, JObj, 'crossbar_action')
+      end,
+      JObjs
+     ).
+
+%%------------------------------------------------------------------------------
 %% @doc disallow vmbox messages array changing.
 %% Also check if vmbox has still message array
 %% and inform client to do migrate their vmbox
@@ -506,12 +532,12 @@ save_attachment(Context, Filename, FileJObj) ->
     BoxId = kz_doc:id(JObj),
     Contents = kz_json:get_ne_binary_value(<<"contents">>, FileJObj),
     CT = kz_json:get_ne_binary_value([<<"headers">>, <<"content_type">>], FileJObj),
-    Opts = [{'content_type', CT}
-           ,{'rev', kz_doc:revision(JObj)}
-            | ?TYPE_CHECK_OPTION(<<"mailbox_message">>)
-           ],
+    Options = [{'content_type', CT}
+              ,{'rev', kz_doc:revision(JObj)}
+               | ?TYPE_CHECK_OPTION(<<"mailbox_message">>)
+              ],
     AttName = cb_modules_util:attachment_name(Filename, CT),
-    C1 = crossbar_doc:save_attachment(BoxId, AttName, Contents, Context, Opts),
+    C1 = crossbar_doc:save_attachment(BoxId, AttName, Contents, Context, Options),
     case cb_context:resp_status(C1) of
         'success' ->
             C2 = crossbar_util:response(kzd_box_message:metadata(JObj), C1),
@@ -677,7 +703,19 @@ validate_unique_vmbox(VMBoxId, Context, _AccountDb) ->
 check_vmbox_schema(VMBoxId, Context) ->
     Context1 = maybe_migrate_notification_emails(Context),
     OnSuccess = fun(C) -> validate_media_extension(VMBoxId, C) end,
-    cb_context:validate_request_data(<<"vmboxes">>, Context1, OnSuccess).
+    cb_context:validate_request_data(find_schema(), Context1, OnSuccess).
+
+-spec find_schema() -> kz_json:api_object().
+find_schema() ->
+    case kz_json_schema:load(<<"vmboxes">>) of
+        {'ok', SchemaJObj} ->
+            Props = [{[<<"properties">>, <<"transcribe">>, <<"default">>]
+                     ,kvm_util:transcribe_default()
+                     }
+                    ],
+            kz_json:set_values(Props, SchemaJObj);
+        {'error', _E} -> 'undefined'
+    end.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -767,7 +805,11 @@ merge_summary_fold(BoxSummary, CountMap) ->
             MsgsArrayCount = kz_json:get_integer_value(?VM_KEY_MESSAGES, BoxSummary, 0),
             New = maps:get(?VM_FOLDER_NEW, BoxCountMap, 0),
             Saved = maps:get(?VM_FOLDER_SAVED, BoxCountMap, 0),
-            kz_json:set_value(?VM_KEY_MESSAGES, MsgsArrayCount + New + Saved, BoxSummary)
+            Summary = [{?VM_KEY_MESSAGES, MsgsArrayCount + New + Saved}
+                      ,{[<<"folders">>, ?VM_FOLDER_NEW], New}
+                      ,{[<<"folders">>, ?VM_FOLDER_SAVED], Saved}
+                      ],
+            kz_json:set_values(Summary, BoxSummary)
     end.
 
 %%------------------------------------------------------------------------------
@@ -854,6 +896,8 @@ prefix_filter_key(<<"key_missing">>, Key) ->
     {<<"key_missing">>, <<"metadata.", Key/binary>>};
 prefix_filter_key(<<"has_value">>, Key) ->
     {<<"has_value">>, <<"metadata.", Key/binary>>};
+prefix_filter_key(<<"value_missing">>, Key) ->
+    {<<"value_missing">>, <<"metadata.", Key/binary>>};
 prefix_filter_key(Key, Value) ->
     {Key, Value}.
 

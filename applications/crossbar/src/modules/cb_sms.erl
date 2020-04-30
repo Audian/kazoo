@@ -2,6 +2,11 @@
 %%% @copyright (C) 2012-2020, 2600Hz
 %%% @doc
 %%% @author Luis Azedo
+%%%
+%%% This Source Code Form is subject to the terms of the Mozilla Public
+%%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%%% file, You can obtain one at https://mozilla.org/MPL/2.0/.
+%%%
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(cb_sms).
@@ -107,11 +112,18 @@ validate_sms(Context, Id, ?HTTP_DELETE) ->
 -spec put(cb_context:context()) -> cb_context:context().
 put(Context) ->
     Payload = cb_context:doc(Context),
-    _ = case kz_api_sms:route_type(Payload) of
-            <<"onnet">> -> kz_amqp_worker:cast(Payload, fun kapi_sms:publish_inbound/1);
-            <<"offnet">> -> kz_amqp_worker:cast(Payload, fun kapi_sms:publish_outbound/1)
-        end,
-    crossbar_util:response(kz_api:remove_defaults(Payload), Context).
+    Ctx = case kz_im:route_type(Payload) of
+              <<"onnet">> ->
+                  _ = kz_amqp_worker:cast(Payload, fun kapi_im:publish_inbound/1),
+                  Context;
+              <<"offnet">> ->
+                  _ = kz_amqp_worker:cast(Payload, fun kapi_im:publish_outbound/1),
+                  AccountId = cb_context:account_id(Context),
+                  Rate = kz_services_im:flat_rate(AccountId, 'sms', 'outbound'),
+                  Charges = kz_json:from_list([{<<"charges">>, Rate}]),
+                  cb_context:set_resp_envelope(Context, kz_json:merge(cb_context:resp_envelope(Context), Charges))
+          end,
+    crossbar_util:response(kz_json:normalize(kz_api:remove_defaults(Payload)), Ctx).
 
 %%------------------------------------------------------------------------------
 %% @doc If the HTTP verb is DELETE, execute the actual action, usually a db delete
@@ -128,7 +140,7 @@ delete(Context, _Id) ->
 -spec create(cb_context:context()) -> cb_context:context().
 create(Context) ->
     OnSuccess = fun(C) -> on_successful_validation(C) end,
-    cb_context:validate_request_data(<<"sms">>, Context, OnSuccess).
+    cb_context:validate_request_data(kzd_sms:type(), Context, OnSuccess).
 
 %%------------------------------------------------------------------------------
 %% @doc Load an instance from the database
@@ -136,10 +148,15 @@ create(Context) ->
 %%------------------------------------------------------------------------------
 -spec read(kz_term:ne_binary(), cb_context:context()) -> cb_context:context().
 read(?MATCH_MODB_PREFIX(Year,Month,_) = Id, Context) ->
-    Context1 = cb_context:set_account_modb(Context, kz_term:to_integer(Year), kz_term:to_integer(Month)),
-    crossbar_doc:load(Id, Context1, ?TYPE_CHECK_OPTION(<<"sms">>));
+    Context1 = cb_context:set_account_db(Context
+                                        ,kz_util:format_account_id(cb_context:account_id(Context)
+                                                                  ,kz_term:to_integer(Year)
+                                                                  ,kz_term:to_integer(Month)
+                                                                  )
+                                        ),
+    crossbar_doc:load(Id, Context1, ?TYPE_CHECK_OPTION(kzd_sms:type()));
 read(Id, Context) ->
-    crossbar_doc:load(Id, Context, ?TYPE_CHECK_OPTION(<<"sms">>)).
+    crossbar_doc:load(Id, Context, ?TYPE_CHECK_OPTION(kzd_sms:type())).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -148,8 +165,10 @@ read(Id, Context) ->
 -spec on_successful_validation(cb_context:context()) -> cb_context:context().
 on_successful_validation(Context) ->
     Setters = [fun account_is_enabled/1
-              ,fun account_is_in_good_standing/1
               ,fun account_has_sms_enabled/1
+              ,fun account_is_in_good_standing/1
+              ,fun reseller_has_sms_enabled/1
+              ,fun reseller_is_in_good_standing/1
               ,fun create_request/1
               ,fun validate_from/1
               ],
@@ -176,13 +195,13 @@ create_request(Context) ->
                 {<<"user">>, UserId, UserId}
         end,
 
-    To = kz_json:get_value(<<"to">>, Payload),
+    To = kzd_sms:to(Payload),
     {Type, ToNum} = case knm_converters:is_reconcilable(To) of
                         'true' -> {<<"offnet">>, knm_converters:normalize(To, AccountId)};
                         'false' -> {<<"onnet">>, To}
                     end,
 
-    FromNum = kz_json:get_value(<<"from">>, Payload, get_default_caller_id(Context, Type, OwnerId)),
+    FromNum = kzd_sms:from(Payload, get_default_caller_id(Context, Type, OwnerId)),
 
     CCVs = [{<<"Account-ID">>, AccountId}
            ,{<<"Reseller-ID">>, ResellerId}
@@ -194,17 +213,15 @@ create_request(Context) ->
     KVs = [{<<"Message-ID">>, cb_context:req_id(Context)}
           ,{<<"From">>, FromNum}
           ,{<<"To">>, ToNum}
-          ,{<<"Body">>, kz_json:get_value(<<"body">>, Payload)}
+          ,{<<"Body">>, kzd_sms:body(Payload)}
           ,{<<"Account-ID">>, cb_context:account_id(Context)}
-          ,{<<"Custom-Channel-Vars">>, kz_json:from_list(CCVs)}
+          ,{<<"Custom-Vars">>, kz_json:from_list(CCVs)}
           ,{<<"Route-Type">>, Type}
-          ,{<<"from">>, null}
-          ,{<<"to">>, null}
-          ,{<<"body">>, null}
+          ,{<<"Event-Category">>, <<"sms">>}
            | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
           ],
 
-    cb_context:set_doc(Context, kz_json:set_values(KVs, Payload)).
+    cb_context:set_doc(Context, kz_json:from_list(KVs)).
 
 -spec get_default_caller_id(cb_context:context(), binary(), kz_term:api_binary()) -> kz_term:api_binary().
 get_default_caller_id(Context, <<"offnet">>, 'undefined') ->
@@ -242,13 +259,40 @@ account_has_sms_enabled(Context) ->
         'false' -> cb_context:add_system_error('account', <<"sms services not enabled for account">>, Context)
     end.
 
+-spec reseller_is_in_good_standing(cb_context:context()) -> cb_context:context().
+reseller_is_in_good_standing(Context) ->
+    case kz_services_standing:acceptable(cb_context:reseller_id(Context)) of
+        {'true', _} -> Context;
+        {'false', #{message := Msg}} ->
+            lager:warning("reseller ~s for account ~s is not in good standing => ~p"
+                         ,[cb_context:reseller_id(Context)
+                          ,cb_context:account_id(Context)
+                          ,Msg
+                          ]
+                         ),
+            cb_context:add_system_error('account', <<"service temporarily unavailable">>, Context)
+    end.
+
+-spec reseller_has_sms_enabled(cb_context:context()) -> cb_context:context().
+reseller_has_sms_enabled(Context) ->
+    case kz_services_im:is_sms_enabled(cb_context:reseller_id(Context)) of
+        'true' -> Context;
+        'false' ->
+            lager:warning("sms services not enabled for reseller ~s of account ~s"
+                         ,[cb_context:reseller_id(Context)
+                          ,cb_context:account_id(Context)
+                          ]
+                         ),
+            cb_context:add_system_error('account', <<"service temporarily unavailable">>, Context)
+    end.
+
 -spec validate_from(cb_context:context()) -> cb_context:context().
 validate_from(Context) ->
-    case kz_api_sms:route_type(cb_context:doc(Context)) of
+    case kz_im:route_type(cb_context:doc(Context)) of
         <<"onnet">> ->
             Context;
         <<"offnet">> ->
-            Setters = [{fun number_exists/2, kz_api_sms:from(cb_context:doc(Context))}
+            Setters = [{fun number_exists/2, kz_im:from(cb_context:doc(Context))}
                       ,fun number_belongs_to_account/1
                       ,fun number_has_sms_enabled/1
                       ],
@@ -287,24 +331,24 @@ number_has_sms_enabled(Context) ->
 -spec summary(cb_context:context()) -> cb_context:context().
 summary(Context) ->
     {ViewName, Opts} =
-        build_view_name_rane_keys(cb_context:device_id(Context), cb_context:user_id(Context)),
+        build_view_name_range_keys(cb_context:device_id(Context), cb_context:user_id(Context)),
     Options = [{'mapper', fun normalize_view_results/2}
                | Opts
               ],
     crossbar_view:load_modb(Context, ViewName, Options).
 
--spec build_view_name_rane_keys(kz_term:api_binary(), kz_term:api_binary()) -> {kz_term:ne_binary(), crossbar_view:options()}.
-build_view_name_rane_keys('undefined', 'undefined') ->
+-spec build_view_name_range_keys(kz_term:api_binary(), kz_term:api_binary()) -> {kz_term:ne_binary(), crossbar_view:options()}.
+build_view_name_range_keys('undefined', 'undefined') ->
     {?CB_LIST_ALL
     ,[{'range_start_keymap', []}
      ,{'range_end_keymap', crossbar_view:suffix_key_fun([kz_json:new()])}
      ]
     };
-build_view_name_rane_keys('undefined', Id) ->
+build_view_name_range_keys('undefined', Id) ->
     {?CB_LIST_BY_OWNERID
     ,[{'range_keymap', [Id]}]
     };
-build_view_name_rane_keys(Id, _) ->
+build_view_name_range_keys(Id, _) ->
     {?CB_LIST_BY_DEVICE
     ,[{'range_keymap', [Id]}]
     }.
@@ -318,4 +362,3 @@ normalize_view_results(JObj, Acc) ->
     ValueJObj = kz_json:get_value(<<"value">>, JObj),
     Date = kz_time:rfc1036(kz_json:get_value(<<"created">>, ValueJObj)),
     [kz_json:set_value(<<"date">>, Date, JObj) | Acc].
-

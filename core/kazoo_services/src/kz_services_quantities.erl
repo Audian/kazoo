@@ -21,7 +21,7 @@
 
 -include("services.hrl").
 
--type billable() :: kz_json:api_object().
+-type billable() :: kz_term:api_object().
 -type billables() :: kz_json:objects().
 -type quantity_kv() :: {kz_term:ne_binaries(), integer()}.
 -type quantities_prop() :: [quantity_kv()].
@@ -301,7 +301,7 @@ calculate_updates(Services, CurrentJObjs, [ProposedJObj|RemainingProposedJObjs],
                      ,sum_updates(Props, Updates)
                      ).
 
--spec split_jobjs(kz_json:objects(), kz_term:ne_binary()) -> {kz_json:api_object(), kz_json:objects()}.
+-spec split_jobjs(kz_json:objects(), kz_term:ne_binary()) -> {kz_term:api_object(), kz_json:objects()}.
 split_jobjs(JObjs, Id) ->
     case lists:splitwith(fun(JObj) ->
                                  kz_doc:id(JObj) =:= Id
@@ -313,7 +313,7 @@ split_jobjs(JObjs, Id) ->
             {CurrentJObj, RemainingJObjs}
     end.
 
--spec calculate_updates(kz_services:services(), kz_json:api_object()) -> kz_term:proplist().
+-spec calculate_updates(kz_services:services(), kz_term:api_object()) -> kz_term:proplist().
 calculate_updates(_Services, 'undefined') -> [];
 calculate_updates(Services, JObj) ->
     case kz_json:is_false(<<"enabled">>, JObj)
@@ -532,7 +532,8 @@ calculate_qubicle_queue_updates(JObj, Updates) ->
     case kz_doc:type(JObj) =:= <<"qubicle_queue">> of
         'false' -> Updates;
         'true' ->
-            Key = [<<"qubicle">>, <<"queues">>],
+            Offering = kz_json:get_ne_value(<<"pvt_offering">>, JObj, <<"basic">>),
+            Key = [<<"qubicle">>, <<Offering/binary, "_queue">>],
             [{Key, 1} | Updates]
     end.
 
@@ -543,7 +544,8 @@ calculate_qubicle_recipient_updates(JObj, Updates) ->
     of
         'false' -> Updates;
         'true' ->
-            Key = [<<"qubicle">>, <<"recipients">>],
+            Offering = kz_json:get_ne_value([<<"qubicle">>, <<"recipient">>, <<"offering">>], JObj, <<"basic">>),
+            Key = [<<"qubicle">>, <<Offering/binary, "_recipient">>],
             [{Key, 1} | Updates]
     end.
 

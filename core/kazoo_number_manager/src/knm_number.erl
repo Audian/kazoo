@@ -110,7 +110,7 @@ is_number(_) -> 'false'.
 %% <div class="notice">Number parameter has to be normalized.</div>
 %%
 %% <div class="notice">{@link get/1}, {@link get/2} should not throw,
-%% instead they should return: `{ok,_} | {error,_} | ...'.</div>
+%% instead they should return: `{'ok',_} | {error,_} | ...'.</div>
 %% @end
 %%------------------------------------------------------------------------------
 
@@ -385,8 +385,10 @@ lookup_account(Num) ->
 
 fetch_account_from_number(Num) ->
     case knm_phone_number:fetch(Num) of
-        {'ok', PN} -> check_number(PN);
-        {'error', _}=Error -> maybe_fetch_account_from_ports(Num, Error)
+        {'ok', PN} ->
+            check_number(PN);
+        {'error', _}=Error ->
+            maybe_fetch_account_from_ports(Num, Error)
     end.
 
 check_number(PN) ->
@@ -425,7 +427,6 @@ check_account(PN) ->
                     ,{'ringback_media', find_early_ringback(PN)}
                     ,{'transfer_media', find_transfer_ringback(PN)}
                     ,{'force_outbound', is_force_outbound(PN)}
-                    ,{'im', feature_im(PN)}
                     ],
             {'ok', AssignedTo, Props}
     end.
@@ -466,18 +467,6 @@ feature_prepend(PhoneNumber) ->
     case kz_json:is_true(?PREPEND_ENABLED, Prepend) of
         'false' -> 'undefined';
         'true' -> kz_json:get_ne_value(?PREPEND_NAME, Prepend)
-    end.
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% @end
-%%------------------------------------------------------------------------------
--spec feature_im(knm_phone_number:knm_phone_number()) -> kz_term:api_binary().
-feature_im(PhoneNumber) ->
-    IM = knm_phone_number:feature(PhoneNumber, ?FEATURE_IM),
-    case knm_im:enabled(PhoneNumber) of
-        'false' -> 'undefined';
-        'true' -> IM
     end.
 
 %%------------------------------------------------------------------------------
